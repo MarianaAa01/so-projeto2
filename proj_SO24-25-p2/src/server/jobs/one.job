@@ -7,3 +7,5 @@ DELETE [c]
 READ [c]
 WAIT 1000
 SHOW
+WRITE [(l,laura)]
+BACKUP

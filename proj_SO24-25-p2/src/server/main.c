@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <stdio.h>
+#include <sys/stat.h>
 
 #include "constants.h"
 #include "parser.h"
@@ -14,6 +15,8 @@
 #include "io.h"
 #include "pthread.h"
 
+
+//info partilhada entre threads
 struct SharedData {
   DIR* dir;
   char* dir_name;
@@ -28,7 +31,7 @@ size_t max_backups;            // Maximum allowed simultaneous backups
 size_t max_threads;            // Maximum allowed simultaneous threads
 char* jobs_directory = NULL;
 
-int filter_job_files(const struct dirent* entry) {
+int filter_job_files(const struct dirent* entry) { //vê que files é que são do tipo ".job"
     const char* dot = strrchr(entry->d_name, '.');
     if (dot != NULL && strcmp(dot, ".job") == 0) {
         return 1;  // Keep this file (it has the .job extension)
@@ -36,6 +39,11 @@ int filter_job_files(const struct dirent* entry) {
     return 0;
 }
 
+/*
+entry_files: vê se o file é válido
+             vê se o nome do file respeita o MAX_JOB_FILE_NAME_SIZE
+             controi o output file
+*/
 static int entry_files(const char* dir, struct dirent* entry, char* in_path, char* out_path) {
   const char* dot = strrchr(entry->d_name, '.');
   if (dot == NULL || dot == entry->d_name || strlen(dot) != 4 || strcmp(dot, ".job")) {
@@ -57,6 +65,7 @@ static int entry_files(const char* dir, struct dirent* entry, char* in_path, cha
   return 0;
 }
 
+//era a nossa tableOperations (processa os comandos)
 static int run_job(int in_fd, int out_fd, char* filename) {
   size_t file_backups = 0;
   while (1) {
@@ -164,12 +173,15 @@ static int run_job(int in_fd, int out_fd, char* filename) {
   }
 }
 
+//executada dentro de cada thread
 //frees arguments
 static void* get_file(void* arguments) {
+  //lê os argumentos
   struct SharedData* thread_data = (struct SharedData*) arguments;
   DIR* dir = thread_data->dir;
   char* dir_name = thread_data->dir_name;
 
+  //lock para apenas uma thread ler de cada vez
   if (pthread_mutex_lock(&thread_data->directory_mutex) != 0) {
     fprintf(stderr, "Thread failed to lock directory_mutex\n");
     return NULL;
@@ -177,6 +189,7 @@ static void* get_file(void* arguments) {
 
   struct dirent* entry;
   char in_path[MAX_JOB_FILE_NAME_SIZE], out_path[MAX_JOB_FILE_NAME_SIZE];
+  //lê a diretoria
   while ((entry = readdir(dir)) != NULL) {
     if (entry_files(dir_name, entry, in_path, out_path)) {
       continue;
@@ -187,6 +200,7 @@ static void* get_file(void* arguments) {
       return NULL;
     }
 
+    //abre cada file para readOnly (in_fd)
     int in_fd = open(in_path, O_RDONLY);
     if (in_fd == -1) {
       write_str(STDERR_FILENO, "Failed to open input file: ");
@@ -194,7 +208,7 @@ static void* get_file(void* arguments) {
       write_str(STDERR_FILENO, "\n");
       pthread_exit(NULL);
     }
-
+    //cria o file output com writeOnly (out_fd)
     int out_fd = open(out_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (out_fd == -1) {
       write_str(STDERR_FILENO, "Failed to open output file: ");
@@ -203,6 +217,7 @@ static void* get_file(void* arguments) {
       pthread_exit(NULL);
     }
 
+    //processar os comandos do file
     int out = run_job(in_fd, out_fd, entry->d_name);
 
     close(in_fd);
@@ -233,6 +248,7 @@ static void* get_file(void* arguments) {
 
 
 static void dispatch_threads(DIR* dir) {
+  //array de threads com o maximo de threads dada no input (max_threads)
   pthread_t* threads = malloc(max_threads * sizeof(pthread_t));
 
   if (threads == NULL) {
@@ -240,9 +256,10 @@ static void dispatch_threads(DIR* dir) {
     return;
   }
 
+  //inicializar a SharedData entre essas threads
   struct SharedData thread_data = {dir, jobs_directory, PTHREAD_MUTEX_INITIALIZER};
 
-
+  //ciclo for para criar threads, sendo que cada thread executa a get_file
   for (size_t i = 0; i < max_threads; i++) {
     if (pthread_create(&threads[i], NULL, get_file, (void*)&thread_data) != 0) {
       fprintf(stderr, "Failed to create thread %zu\n", i);
@@ -251,9 +268,9 @@ static void dispatch_threads(DIR* dir) {
       return;
     }
   }
-
   // ler do FIFO de registo
 
+  //sincronizar as threads com o pthread_join
   for (unsigned int i = 0; i < max_threads; i++) {
     if (pthread_join(threads[i], NULL) != 0) {
       fprintf(stderr, "Failed to join thread %u\n", i);
@@ -272,27 +289,30 @@ static void dispatch_threads(DIR* dir) {
 
 
 int main(int argc, char** argv) {
-  if (argc < 4) {
+  //se os argumentos todos n forem apresentados o programa termina
+  if (argc < 5) {
     write_str(STDERR_FILENO, "Usage: ");
     write_str(STDERR_FILENO, argv[0]);
     write_str(STDERR_FILENO, " <jobs_dir>");
 		write_str(STDERR_FILENO, " <max_threads>");
-		write_str(STDERR_FILENO, " <max_backups> \n");
+		write_str(STDERR_FILENO, " <max_backups>");
+    write_str(STDERR_FILENO, " <nome_do_FIFO_de_registo> \n");
     return 1;
   }
 
+  //inicializar as variaveis globais
   jobs_directory = argv[1];
 
   char* endptr;
+  //maximo de backups simultaneos
   max_backups = strtoul(argv[3], &endptr, 10);
-
   if (*endptr != '\0') {
     fprintf(stderr, "Invalid max_proc value\n");
     return 1;
   }
 
+  //maximo de threads em simultaneo
   max_threads = strtoul(argv[2], &endptr, 10);
-
   if (*endptr != '\0') {
     fprintf(stderr, "Invalid max_threads value\n");
     return 1;
@@ -308,27 +328,62 @@ int main(int argc, char** argv) {
 		return 0;
 	}
 
+  const char* nome_do_FIFO_de_registo = argv[4];
+  //criar o FIFO (named pipe)
+  if (mkfifo(nome_do_FIFO_de_registo, 0666) == -1) {
+    write_str(STDERR_FILENO, "Failed creating FIFO.\n");
+    return 1;
+  } else {
+    printf("FIFO '%s' was created!\n", nome_do_FIFO_de_registo); //printf só para debug
+  }
+
+  //temos de abrir o FIFO para leitura porque é assim que o servidor "ouve" o que os clientes "querem"
+  int server_fd = open(nome_do_FIFO_de_registo, O_RDONLY);
+  if (server_fd == -1) {
+    write_str(STDERR_FILENO, "Failed opening FIFO.\n");
+    unlink(nome_do_FIFO_de_registo); //tirar o FIFO em caso de erro
+    return 1;
+  }
+
+
+  //criar a hash
   if (kvs_init()) {
     write_str(STDERR_FILENO, "Failed to initialize KVS\n");
     return 1;
   }
 
+  //abrir a diretoria
   DIR* dir = opendir(argv[1]);
   if (dir == NULL) {
     fprintf(stderr, "Failed to open directory: %s\n", argv[1]);
     return 0;
   }
 
-  dispatch_threads(dir);
 
+
+  //cria e organiza/gerencia as threads como já vimos
+  dispatch_threads(dir);
+  //fechar a diretoria
   if (closedir(dir) == -1) {
     fprintf(stderr, "Failed to close directory\n");
     return 0;
   }
 
+  //sincronizar backups ativos
+  /*cada vez que o backup é concluído, o active_backups é decrementado
+  quando o active_backups chega a zero o kvs termina (com o kvs_terminate())
+  */
   while (active_backups > 0) {
     wait(NULL);
     active_backups--;
+  }
+
+  //fechar o FIFO após terminar de processar os pedidos dos clientes
+  if (close(server_fd) == -1) {
+    write_str(STDERR_FILENO, "Failed to close FIFO.\n");
+    return 1;
+  } else {
+    printf("FIFO '%s' closed successfully!\n", nome_do_FIFO_de_registo); //printf para debug
   }
 
   kvs_terminate();

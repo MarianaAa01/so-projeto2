@@ -1,0 +1,14 @@
+{
+    "files.associations": {
+        "io.h": "c",
+        "constants.h": "c",
+        "types.h": "c",
+        "stat.h": "c",
+        "operations.h": "c",
+        "pthread.h": "c",
+        "api.h": "c",
+        "parser.h": "c",
+        "wait.h": "c",
+        "protocol.h": "c"
+    }
+}

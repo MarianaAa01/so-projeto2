@@ -4,12 +4,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "parser.h"
 #include "src/client/api.h"
 #include "src/common/constants.h"
 #include "src/common/io.h"
 
+void write_str(int fd, const char* str) {
+    write(fd, str, strlen(str));
+}
 
 int main(int argc, char* argv[]) {
   if (argc < 3) {
@@ -28,8 +32,9 @@ int main(int argc, char* argv[]) {
   strncat(req_pipe_path, argv[1], strlen(argv[1]) * sizeof(char));
   strncat(resp_pipe_path, argv[1], strlen(argv[1]) * sizeof(char));
   strncat(notif_pipe_path, argv[1], strlen(argv[1]) * sizeof(char));
-
+  
   // TODO open pipes
+  
 
   while (1) {
     switch (get_next(STDIN_FILENO)) {
@@ -51,6 +56,8 @@ int main(int argc, char* argv[]) {
          
         if (kvs_subscribe(keys[0])) {
             fprintf(stderr, "Command subscribe failed\n");
+        } else {
+          //TODO: start notifications thread
         }
 
         break;
