@@ -24,10 +24,18 @@ int main(int argc, char* argv[]) {
   char req_pipe_path[256] = "/tmp/req";
   char resp_pipe_path[256] = "/tmp/resp";
   char notif_pipe_path[256] = "/tmp/notif";
+  char server_pipe_path = argv[2];
+  int notif_pipe;
 
   char keys[MAX_NUMBER_SUB][MAX_STRING_SIZE] = {0};
   unsigned int delay_ms;
   size_t num;
+
+  //conectar ao server
+  if (kvs_connect(req_pipe_path, resp_pipe_path,server_pipe_path, notif_pipe_path, notif_pipe) != 0) {
+    fprintf(stderr, "Failed to connect to the server.\n");
+    return 1;
+  }
 
   strncat(req_pipe_path, argv[1], strlen(argv[1]) * sizeof(char));
   strncat(resp_pipe_path, argv[1], strlen(argv[1]) * sizeof(char));

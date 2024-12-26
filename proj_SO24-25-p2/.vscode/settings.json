@@ -10,5 +10,6 @@
         "parser.h": "c",
         "wait.h": "c",
         "protocol.h": "c"
-    }
+    },
+    "zencoder.enableRepoIndexing": true
 }

@@ -80,7 +80,7 @@ int kvs_connect(char const* req_pipe_path, char const* resp_pipe_path, char cons
       return 1;
   }
 
-  //resposta
+  //validar a resposta
   if (response[0] != 1 || response[1] != 0) {
       write_str(STDERR_FILENO, "Connection failed with server\n");
       close(req_fd);
@@ -88,25 +88,23 @@ int kvs_connect(char const* req_pipe_path, char const* resp_pipe_path, char cons
       close(notif_fd);
       return 1;
   }
-
-  //close the file descriptors of the pipes
-  close(req_fd);
-  close(resp_fd);
-  close(notif_fd);
-
-  //set the notification pipe descriptor as an argument
-  *notif_pipe = notif_fd;
-
-  //unlink the FIFOs after successful connection
-  unlink(req_pipe_path);
-  unlink(resp_pipe_path);
-  unlink(notif_pipe_path);
+  
+  close(server_fd);
 
   return 0;
 }
  
 int kvs_disconnect(void) {
   // close pipes and unlink pipe files
+  //fechar os pipes
+  close(req_fd);
+  close(resp_fd);
+  close(notif_fd);
+
+  //unlink the FIFOs after successful connection
+  unlink(req_pipe_path);
+  unlink(resp_pipe_path);
+  unlink(notif_pipe_path);
   return 0;
 }
 

@@ -268,7 +268,6 @@ static void dispatch_threads(DIR* dir) {
       return;
     }
   }
-  // ler do FIFO de registo
 
   //sincronizar as threads com o pthread_join
   for (unsigned int i = 0; i < max_threads; i++) {
