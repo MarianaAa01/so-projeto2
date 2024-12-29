@@ -65,7 +65,7 @@ int kvs_read(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fd) {
     fprintf(stderr, "KVS state must be initialized\n");
     return 1;
   }
-  
+
   pthread_rwlock_rdlock(&kvs_table->tablelock);
 
   write_str(fd, "[");
@@ -81,7 +81,7 @@ int kvs_read(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fd) {
     free(result);
   }
   write_str(fd, "]\n");
-  
+
   pthread_rwlock_unlock(&kvs_table->tablelock);
   return 0;
 }
@@ -91,11 +91,12 @@ int kvs_delete(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fd) {
     fprintf(stderr, "KVS state must be initialized\n");
     return 1;
   }
-  
+
   pthread_rwlock_wrlock(&kvs_table->tablelock);
 
   int aux = 0;
   for (size_t i = 0; i < num_pairs; i++) {
+    if (delete_pair(kvs_table, keys[i]) != 0) {
       if (!aux) {
         write_str(fd, "[");
         aux = 1;
@@ -103,6 +104,7 @@ int kvs_delete(size_t num_pairs, char keys[][MAX_STRING_SIZE], int fd) {
       char str[MAX_STRING_SIZE];
       snprintf(str, MAX_STRING_SIZE, "(%s,KVSMISSING)", keys[i]);
       write_str(fd, str);
+    }
   }
   if (aux) {
     write_str(fd, "]\n");
@@ -117,14 +119,15 @@ void kvs_show(int fd) {
     fprintf(stderr, "KVS state must be initialized\n");
     return;
   }
-  
+
   pthread_rwlock_rdlock(&kvs_table->tablelock);
   char aux[MAX_STRING_SIZE];
-  
+
   for (int i = 0; i < TABLE_SIZE; i++) {
     KeyNode *keyNode = kvs_table->table[i]; // Get the next list head
     while (keyNode != NULL) {
-      snprintf(aux, MAX_STRING_SIZE, "(%s, %s)\n", keyNode->key, keyNode->value);
+      snprintf(aux, MAX_STRING_SIZE, "(%s, %s)\n", keyNode->key,
+               keyNode->value);
       write_str(fd, aux);
       keyNode = keyNode->next; // Move to the next node of the list
     }
@@ -133,11 +136,11 @@ void kvs_show(int fd) {
   pthread_rwlock_unlock(&kvs_table->tablelock);
 }
 
-int kvs_backup(size_t num_backup,char* job_filename , char* directory) {
+int kvs_backup(size_t num_backup, char *job_filename, char *directory) {
   pid_t pid;
   char bck_name[50];
-  snprintf(bck_name, sizeof(bck_name), "%s/%s-%ld.bck", directory, strtok(job_filename, "."),
-           num_backup);
+  snprintf(bck_name, sizeof(bck_name), "%s/%s-%ld.bck", directory,
+           strtok(job_filename, "."), num_backup);
 
   pthread_rwlock_rdlock(&kvs_table->tablelock);
   pid = fork();
@@ -153,14 +156,14 @@ int kvs_backup(size_t num_backup,char* job_filename , char* directory) {
         aux[0] = '(';
         size_t num_bytes_copied = 1; // the "("
         // the - 1 are all to leave space for the '/0'
-        num_bytes_copied += strn_memcpy(aux + num_bytes_copied,
-                                        keyNode->key, MAX_STRING_SIZE - num_bytes_copied - 1);
-        num_bytes_copied += strn_memcpy(aux + num_bytes_copied,
-                                        ", ", MAX_STRING_SIZE - num_bytes_copied - 1);
-        num_bytes_copied += strn_memcpy(aux + num_bytes_copied,
-                                        keyNode->value, MAX_STRING_SIZE - num_bytes_copied - 1);
-        num_bytes_copied += strn_memcpy(aux + num_bytes_copied,
-                                        ")\n", MAX_STRING_SIZE - num_bytes_copied - 1);
+        num_bytes_copied += strn_memcpy(aux + num_bytes_copied, keyNode->key,
+                                        MAX_STRING_SIZE - num_bytes_copied - 1);
+        num_bytes_copied += strn_memcpy(aux + num_bytes_copied, ", ",
+                                        MAX_STRING_SIZE - num_bytes_copied - 1);
+        num_bytes_copied += strn_memcpy(aux + num_bytes_copied, keyNode->value,
+                                        MAX_STRING_SIZE - num_bytes_copied - 1);
+        num_bytes_copied += strn_memcpy(aux + num_bytes_copied, ")\n",
+                                        MAX_STRING_SIZE - num_bytes_copied - 1);
         aux[num_bytes_copied] = '\0';
         write_str(fd, aux);
         keyNode = keyNode->next; // Move to the next node of the list

@@ -1,8 +1,8 @@
 #ifndef KVS_OPERATIONS_H
 #define KVS_OPERATIONS_H
 
-#include <stddef.h>
 #include "constants.h"
+#include <stddef.h>
 
 /// Initializes the KVS state.
 /// @return 0 if the KVS state was initialized successfully, 1 otherwise.
@@ -17,7 +17,8 @@ int kvs_terminate();
 /// @param keys Array of keys' strings.
 /// @param values Array of values' strings.
 /// @return 0 if the pairs were written successfully, 1 otherwise.
-int kvs_write(size_t num_pairs, char keys[][MAX_STRING_SIZE], char values[][MAX_STRING_SIZE]);
+int kvs_write(size_t num_pairs, char keys[][MAX_STRING_SIZE],
+              char values[][MAX_STRING_SIZE]);
 
 /// Reads values from the KVS.
 /// @param num_pairs Number of pairs to read.
@@ -39,7 +40,7 @@ void kvs_show(int fd);
 /// Creates a backup of the KVS state and stores it in the correspondent
 /// backup file
 /// @return 0 if the backup was successful, 1 otherwise.
-int kvs_backup(size_t num_backup,char* job_filename , char* directory);
+int kvs_backup(size_t num_backup, char *job_filename, char *directory);
 
 /// Waits for the last backup to be called.
 void kvs_wait_backup();
@@ -60,4 +61,4 @@ void set_n_current_backups(int _n_current_backups);
 // @return n_current_backups
 int get_n_current_backups();
 
-#endif  // KVS_OPERATIONS_H
+#endif // KVS_OPERATIONS_H
