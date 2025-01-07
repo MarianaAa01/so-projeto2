@@ -34,6 +34,7 @@ struct SharedData {
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t n_current_backups_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t session_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 size_t active_backups = 0; // Number of active backups
 size_t max_backups;        // Maximum allowed simultaneous backups
@@ -264,38 +265,56 @@ static void *get_file(void *arguments) {
 static void *client_thread(void *arg_struct) {
   c_info client_information;
   client_information = *(c_info *)arg_struct;
-  char buffer[121];
+  char buffer[121]; // request_message do cliente
   char succeeded[2];
   succeeded[0] = 1;
   succeeded[1] = 0;
-  if (read(client_information.server_fd, buffer, 121) == -1)
-      write_str(STDERR_FILENO, "Read failed.\n");
-  else{
-    memcpy(client_information.req_pipe_path, buffer + 1, 40);
-    memcpy(client_information.resp_pipe_path, buffer + 41, 40);
-    memcpy(client_information.notif_pipe_path, buffer + 81, 40);
-  }
-  int resp_fd = open(client_information.resp_pipe_path, O_WRONLY);
-  if (!resp_fd){
-    write_str(STDERR_FILENO, "Open failed\n");
+
+  // lock para termos uma sessão de cada vez
+  pthread_mutex_lock(&session_mutex);
+
+  // ler request_message do cliente
+  if (read(client_information.server_fd, buffer, 121) == -1) {
+    write_str(STDERR_FILENO, "Read failed.\n");
     return NULL;
   }
-  int notif_fd = open(client_information.notif_pipe_path, O_WRONLY);
-  if (!notif_fd){
-    close(resp_fd);
-    write_str(STDERR_FILENO, "Open failed\n");
+  // verificar  OP_CODE é 1 (connection request)
+  if (buffer[0] != 1) {
+    write_str(STDERR_FILENO, "Invalid operation code in client request.\n");
     return NULL;
   }
+  memcpy(client_information.req_pipe_path, buffer + 1, 40);
+  memcpy(client_information.resp_pipe_path, buffer + 41, 40);
+  memcpy(client_information.notif_pipe_path, buffer + 81, 40);
+  // primeiro lemos o request
   int req_fd = open(client_information.req_pipe_path, O_RDONLY);
-  if (!req_fd){
+  if (req_fd == -1) {
     succeeded[1] = 1;
-    write(resp_fd, &succeeded, 1);
+    write_str(STDERR_FILENO, "Open failed\n");
+    return NULL;
+  }
+  // escrever a resposta pro cliente
+  int resp_fd = open(client_information.resp_pipe_path, O_WRONLY);
+  if (resp_fd == -1) {
+    close(req_fd);
+    write_str(STDERR_FILENO, "Open failed\n");
+    return NULL;
+  }
+  // escrever as notificações pro cliente
+  int notif_fd = open(client_information.notif_pipe_path, O_WRONLY);
+  if (notif_fd == -1) {
+    close(req_fd);
     close(resp_fd);
-    close(notif_fd);
     write_str(STDERR_FILENO, "Open failed\n");
     return NULL;
   }
   write(resp_fd, &succeeded, 2);
+  // fechar os file descriptors
+  close(req_fd);
+  close(resp_fd);
+  close(notif_fd);
+  //unlock
+  pthread_mutex_unlock(&session_mutex);
   return NULL;
 }
 

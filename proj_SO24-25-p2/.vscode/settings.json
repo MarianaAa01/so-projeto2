@@ -9,7 +9,8 @@
         "api.h": "c",
         "parser.h": "c",
         "wait.h": "c",
-        "protocol.h": "c"
+        "protocol.h": "c",
+        "errno.h": "c"
     },
     "zencoder.enableRepoIndexing": true
 }
