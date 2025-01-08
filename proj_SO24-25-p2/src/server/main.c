@@ -414,7 +414,7 @@ int main(int argc, char **argv) {
   // temos de abrir o FIFO para leitura porque é assim que o servidor "ouve" o
   // que os clientes "querem"
   printf("Cliente nome_do_FIFO_de_registo: %s\n", nome_do_FIFO_de_registo); //DEBUG
-  int server_fd = open(nome_do_FIFO_de_registo, O_RDONLY);
+  int server_fd = open(nome_do_FIFO_de_registo, O_RDWR);
   if (server_fd == -1) {
     write_str(STDERR_FILENO, "Failed opening FIFO.\n");
     unlink(nome_do_FIFO_de_registo); // tirar o FIFO em caso de erro

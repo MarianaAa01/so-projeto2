@@ -35,6 +35,10 @@ format:
 	@which clang-format >/dev/null 2>&1 || echo "Please install clang-format to run this command"
 	clang-format -i src/common/*.c src/common/*.h src/client/*.c src/client/*.h src/server/*.c src/server/*.h
 
+re:
+	@make clean
+	@make
+
 lldb_client:
 	lldb ./src/client/client 100 /tmp/apagar
 
