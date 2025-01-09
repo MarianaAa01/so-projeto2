@@ -20,8 +20,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  char req_pipe_path[256] = "/tmp/req"; // FIFO de pedido
-  char resp_pipe_path[256] = "/tmp/resp"; // FIFO de resposta
+  char req_pipe_path[256] = "/tmp/req";     // FIFO de pedido
+  char resp_pipe_path[256] = "/tmp/resp";   // FIFO de resposta
   char notif_pipe_path[256] = "/tmp/notif"; // FIFO de notificaçao
   char *server_pipe_path = argv[2]; // FIFO do servidor (inicios de sessao)
   int notif_pipe;
@@ -29,7 +29,7 @@ int main(int argc, char *argv[]) {
   char keys[MAX_NUMBER_SUB][MAX_STRING_SIZE] = {0};
   unsigned int delay_ms;
   size_t num;
-  
+
   strncat(req_pipe_path, argv[1], strlen(argv[1]) * sizeof(char));
   strncat(resp_pipe_path, argv[1], strlen(argv[1]) * sizeof(char));
   strncat(notif_pipe_path, argv[1], strlen(argv[1]) * sizeof(char));
@@ -44,7 +44,8 @@ int main(int argc, char *argv[]) {
   while (1) {
     switch (get_next(STDIN_FILENO)) {
     case CMD_DISCONNECT:
-      if (kvs_disconnect(req_pipe_path, resp_pipe_path, server_pipe_path) != 0) {
+      if (kvs_disconnect(req_pipe_path, resp_pipe_path, notif_pipe_path) !=
+          0) {
         fprintf(stderr, "Failed to disconnect to the server\n");
         return 1;
       }
@@ -101,6 +102,13 @@ int main(int argc, char *argv[]) {
 
     case EOC:
       // input should end in a disconnect, or it will loop here forever
+        // Finalização após processar a resposta
+      if (kvs_disconnect(req_pipe_path, resp_pipe_path, notif_pipe_path) !=
+          0) {
+        fprintf(stderr, "Failed to disconnect to the server\n");
+        return 1;
+      }
+
       break;
     }
   }
