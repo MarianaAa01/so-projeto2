@@ -45,4 +45,5 @@ int delete_pair(HashTable *ht, const char *key);
 /// @param ht Hash table to be deleted.
 void free_table(HashTable *ht);
 
+
 #endif // KVS_H
