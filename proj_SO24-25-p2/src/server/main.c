@@ -19,12 +19,20 @@
 #define OPCODE 0
 #define RESULT 1
 
+// to store the keys that are subscribed at the moment
+typedef struct keys_in_subscription{
+  char key[MAX_STRING_SIZE];
+  int *notif_fds;
+  struct keyInSubscription *next;
+} subscribed_key;
+
 // to store whate we need in the client thread function
 typedef struct clientInfo {
   int server_fd;
   char req_pipe_path[40];
   char resp_pipe_path[40];
   char notif_pipe_path[40];
+  subscribed_key **subscribed_keys_table;
 } c_info;
 
 // info partilhada entre threads
@@ -504,9 +512,15 @@ int main(int argc, char **argv) {
 
   single_client_info.server_fd = server_fd;
 
+
   // Criamos uma thread para controlar a comunicaçao cliente-servidor (parte 2 -
   // exercicio 1.1, so 1 cliente)
   pthread_t thread_client;
+  // Criamos a lista das chaves subscritas
+  subscribed_key **subscribed_keys_head = malloc(sizeof(subscribed_key*));
+  if (!subscribed_keys_head)
+    return 1;
+  single_client_info.subscribed_keys_table = subscribed_keys_head;
   pthread_create(&thread_client, NULL, client_thread,
                  (void *)&single_client_info);
 
