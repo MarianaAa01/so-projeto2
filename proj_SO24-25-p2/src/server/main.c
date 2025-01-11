@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <semaphore.h>
 
 #include "constants.h"
 #include "io.h"
@@ -17,6 +18,9 @@
 #include "pthread.h"
 //#include "subscribed_keys_list.h"
 
+pthread_cond_t buffer_full; // condicao para avisar as threads de que o buffer esta cheio
+char boss_thread_buffer[121]; // buffer produtor-consumidor onde se guardam as mensagens de request
+pthread_mutex_t buffer_mutex; // mutex para controlar as escritas no buffer produtor-consumidor
 
 // to store whate we need in the client thread function
 typedef struct clientInfo {
@@ -264,38 +268,66 @@ static void *get_file(void *arguments) {
   pthread_exit(NULL);
 }
 
-static void *client_thread(void *arg_struct) {
-  c_info client_information;
-  client_information = *(c_info *)arg_struct;
-  char buffer[121]; // request_message do cliente
+static void *boss_thread(void *fd){
+  // fd do servidor geral, utilizado para os requests
+  int server_fd;
+  server_fd = *(int *)fd;
+
+  // criamos o semaforo que gere a quantidade de sessoes
+  sem_open("sessions", 0, NULL, S);
+
+  while(1){
+    // vai lendo do server_fd
+    if (read(server_fd, boss_thread_buffer, sizeof(boss_thread_buffer)) == -1) {
+      write_str(STDERR_FILENO, "Read failed.\n");
+      return NULL;
+	} else {
+		sem_wait("sessions");
+		pthread_mutex_lock(&buffer_mutex);
+		// Avisamos uma das threads de que o buffer esta cheio.
+		// Essa thread desbloqueia o lock depois de utilizar o info no buffer.
+		pthread_cond_signal(&buffer_full);
+	}
+  }
+  sem_close("sessions");
+}
+
+static void *client_thread(void *fd) {
+  int server_fd;
+  server_fd = *(int *)fd;
   char succeeded[2];
   succeeded[OPCODE] = 1;
   succeeded[RESULT] = 0;
 
-  // lock para termos uma sessão de cada vez
+while (1){
+ // lock para termos uma sessão de cada vez
   pthread_mutex_lock(&session_mutex);
 
-  // ler request_message do cliente
-  if (read(client_information.server_fd, buffer, 121) == -1) {
-    write_str(STDERR_FILENO, "Read failed.\n");
-    return NULL;
-  }
+  //ler mensagem
+  while(boss_thread_buffer[0] == '\0')
+	pthread_cond_wait(&buffer_full, &buffer_mutex);
+
   // verificar  OP_CODE é 1 (connection request)
-  if (buffer[0] != 1) {
+  if (boss_thread_buffer[0] != 1) {
     write_str(STDERR_FILENO, "Invalid operation code in client request.\n");
     return NULL;
   }
-  memcpy(client_information.req_pipe_path, buffer + 1, 40);
-  memcpy(client_information.resp_pipe_path, buffer + 41, 40);
-  memcpy(client_information.notif_pipe_path, buffer + 81, 40);
+  memset(boss_thread_buffer, '\0', sizeof(boss_thread_buffer));
+  pthread_mutex_unlock(&buffer_mutex);
+  char req_pipe_path[40];
+  char resp_pipe_path[40];
+  char notif_pipe_path[40];
+  memcpy(req_pipe_path, boss_thread_buffer + 1, 40);
+  memcpy(resp_pipe_path, boss_thread_buffer + 41, 40);
+  memcpy(notif_pipe_path, boss_thread_buffer + 81, 40);
   // primeiro lemos o request
-  int req_fd = open(client_information.req_pipe_path, O_RDONLY);
+  int req_fd = open(req_pipe_path, O_RDONLY);
   if (req_fd == -1) {
     write_str(STDERR_FILENO, "Open failed\n");
     return NULL;
   }
   // escrever a resposta para o cliente
-  int resp_fd = open(client_information.resp_pipe_path, O_WRONLY);
+  int resp_fd = open(resp_pipe_path, O_WRONLY);
   if (resp_fd == -1) {
     close(req_fd);
     write_str(STDERR_FILENO, "Open failed\n");
@@ -303,7 +335,7 @@ static void *client_thread(void *arg_struct) {
     return NULL;
   }
   // escrever as notificações para o cliente
-  int notif_fd = open(client_information.notif_pipe_path, O_WRONLY);
+  int notif_fd = open(notif_pipe_path, O_WRONLY);
   if (notif_fd == -1) {
     close(req_fd);
     close(resp_fd);
@@ -316,6 +348,8 @@ static void *client_thread(void *arg_struct) {
   // Escreve para o FIFO de respostas que a conexão foi feita com sucesso
   write(resp_fd, &succeeded, sizeof(succeeded));
   // loop para estar sempre a ler e a responder a requests de clients
+  char buffer[1 + MAX_STRING_SIZE];
+  ssize_t bytes_read = read(req_fd, buffer, sizeof(buffer));
   while (buffer[0] != 2) { // sai daqui quando o cliente quer dar disconnect
     ssize_t bytes_read = read(req_fd, buffer, sizeof(buffer));
     if (bytes_read <= 0) {
@@ -341,21 +375,23 @@ static void *client_thread(void *arg_struct) {
       memcpy(u_key, buffer + 1, (size_t)bytes_read - 1);
       u_key[bytes_read - 1] = '\0';
       //Subscrevemos a key pretendida
-      succeeded[RESULT] = unsubscribe_key(u_key, notif_fd);      
+      succeeded[RESULT] = unsubscribe_key(u_key, notif_fd);
       write(resp_fd, &succeeded, sizeof(succeeded)); // Respond to the client
       break;
     }
     }
   }
-  // write(resp_fd, &succeeded, 2);
 
   // fechar os file descriptors
   close(req_fd);
   close(resp_fd);
   close(notif_fd);
   // unlock
+  sem_post("sessions");
   pthread_mutex_unlock(&session_mutex);
   return NULL;
+}
+
 }
 
 static void dispatch_threads(DIR *dir) {
@@ -477,18 +513,25 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  // Criamos uma estrutura para conseguir enviar as informaçoes a thread cliente
+  memset(boss_thread_buffer, '\0', sizeof(boss_thread_buffer));
+  // init da condicao das threads
+  pthread_cond_init(&buffer_full, NULL);
 
-  c_info single_client_info;
+  // init da mutex do buffer produtor consumidor
+  pthread_mutex_init(&buffer_mutex, NULL);
 
-  single_client_info.server_fd = server_fd;
-
+  // Criamos uma thread anfitria para organizar os pedidos de connect ao server
+  pthread_t thread_boss;
+  pthread_create(&thread_boss, NULL, boss_thread,
+                 (void *)&server_fd);
 
   // Criamos uma thread para controlar a comunicaçao cliente-servidor (parte 2 -
   // exercicio 1.1, so 1 cliente)
-  pthread_t thread_client;
-  pthread_create(&thread_client, NULL, client_thread,
-                 (void *)&single_client_info);
+  pthread_t thread_client[S];
+  for (int i = 0; i < S; i++){
+    pthread_create(&thread_client[i], NULL, client_thread,
+                 (void *)&server_fd);
+  }
 
   // cria e organiza/gerencia as threads como já vimos
   dispatch_threads(dir);
@@ -499,7 +542,9 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  pthread_join(thread_client, NULL); // Da join da thread cliente
+  for (int i = 0; i < S; i++){
+    pthread_join(thread_client[i], NULL); // Da join da thread cliente
+  }
 
   // sincronizar backups ativos
   /*cada vez que o backup é concluído, o active_backups é decrementado
@@ -522,5 +567,7 @@ int main(int argc, char **argv) {
 
   kvs_terminate();
   unlink(nome_do_FIFO_de_registo); // tirar o FIFO em caso de erro
+  pthread_cond_destroy(&buffer_full);
+  pthread_mutex_destroy(&buffer_mutex);
   return 0;
 }
