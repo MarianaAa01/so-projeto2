@@ -114,6 +114,7 @@ int kvs_connect(char const *req_pipe_path, char const *resp_pipe_path,
     write_str(STDERR_FILENO, "Failed to open fifo_notificacoes for reading\n");
     return 1;
   }
+  *notif_pipe = notif_fd;
 
   // TODOS OS FIFOS FORAM CRIADOS E ABERTOS COM SUCESSO, MOVING ON PARA AS
   // MENSAGENS
@@ -174,7 +175,6 @@ int kvs_subscribe(const char *key) {
 
   // mensagem de request
   char subscribe_request[1 + MAX_STRING_SIZE];
-  printf("MAX STRING SIZE: %d\n", MAX_STRING_SIZE);
   subscribe_request[0] = 3; // OP_CODE=3 para subscribe
   snprintf(subscribe_request + 1, MAX_STRING_SIZE, "%s", key);
   // mandar a mensagem
@@ -204,15 +204,15 @@ int kvs_subscribe(const char *key) {
   return 0;
 }
 
+
 int kvs_unsubscribe(const char *key) {
   // send unsubscribe message to request pipe and wait for response in response
   // pipe
 
   // mensagem de unsubscribe
   char unsubscribe_request[1 + MAX_STRING_SIZE];
-  unsubscribe_request[0] = 3; // OP_CODE=3 para unsubscribe
+  unsubscribe_request[0] = 4; // OP_CODE=4 para unsubscribe
   snprintf(unsubscribe_request + 1, MAX_STRING_SIZE, "%s", key);
-  return 0;
   // mandar o request
   if (write(req_fd, unsubscribe_request, sizeof(unsubscribe_request)) == -1) {
     write_str(STDERR_FILENO,
@@ -226,7 +226,7 @@ int kvs_unsubscribe(const char *key) {
     return 1;
   }
   // validar a resposta recebida
-  if (response[0] != 3) {
+  if (response[0] != 4) {
     write_str(STDERR_FILENO, "Invalid response code from server\n");
     return 1;
   }

@@ -67,4 +67,11 @@ int get_n_current_backups();
 /// @return 1 if the key exists in the table, 0 if it doesn't
 char subscribe_key(char *key, int notif_fd);
 
+/// Subscribes a key
+/// @param key key to be subscribed
+/// @param notif_fd Notifications fd of the unsubscribing client
+/// @return 0 if the subscription existed and got removed, 1 if it didn't exist.
+char unsubscribe_key(char *key, int notif_fd);
+
+
 #endif // KVS_OPERATIONS_H

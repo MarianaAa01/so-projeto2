@@ -54,5 +54,12 @@ void free_table(HashTable *ht);
 /// @return 0 if the node of that key does not exist, 1 if it exists.
 char subscribe_table_key(HashTable *ht, const char *key, int notif_fd);
 
+/// Subscribes a key from the table.
+/// @param ht Hash table to read from.
+/// @param key Key of the pair to be subscribed.
+/// @param notif_fd Notifications fd of the client that wants to unsubscribe the key.
+/// @return 0 if the subscription existed and got removed, 1 if it didn't exist.
+char unsubscribe_table_key(HashTable *ht, const char *key, int notif_fd);
+
 
 #endif // KVS_H

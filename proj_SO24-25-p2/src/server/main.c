@@ -327,19 +327,21 @@ static void *client_thread(void *arg_struct) {
     switch (buffer[0]) {
     case 3: { // OP_CODE do subscribe
       // Obter a key que o cliente quer subscrever
-      char key[MAX_STRING_SIZE];
-      memcpy(key, buffer + 1, (size_t)(bytes_read - 1));
-      key[bytes_read - 1] = '\0';
+      char s_key[MAX_STRING_SIZE];
+      memcpy(s_key, buffer + 1, (size_t)(bytes_read - 1));
+      s_key[bytes_read - 1] = '\0';
       //Subscrevemos a key pretendida
-      succeeded[RESULT] = subscribe_key(key, notif_fd);
+      succeeded[RESULT] = subscribe_key(s_key, notif_fd);
       write(resp_fd, &succeeded, sizeof(succeeded)); // responder ao cliente
       break;
     }
     case 4: { // OP_CODE do unsubscribe
       // Obter a key que o cliente quer dessubscrever
-      char unsubscribe_key[MAX_STRING_SIZE];
-      memcpy(unsubscribe_key, buffer + 1, (size_t)bytes_read - 1);
-      unsubscribe_key[bytes_read - 1] = '\0';
+      char u_key[MAX_STRING_SIZE];
+      memcpy(u_key, buffer + 1, (size_t)bytes_read - 1);
+      u_key[bytes_read - 1] = '\0';
+      //Subscrevemos a key pretendida
+      succeeded[RESULT] = unsubscribe_key(u_key, notif_fd);      
       write(resp_fd, &succeeded, sizeof(succeeded)); // Respond to the client
       break;
     }

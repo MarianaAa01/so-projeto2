@@ -14,13 +14,26 @@
 void write_str(int fd, const char *str) { write(fd, str, strlen(str)); }
 
 void *get_notifications(void *fd){
-  char buffer[82];
-    char chave[41];
-    char valor[41];
+  char buffer[82]; //buffer to hold message
+  memset(buffer, '\0', sizeof(buffer));
+  char key[41]; //buffer to hold key
+  char value[41]; //buffer to hold value
   int *notif_fd;
   notif_fd = (int *)fd;
   while (read(*notif_fd, buffer, 82)){
-    //(<chave>,<valor>)
+    memcpy(key, buffer, 41);
+    memcpy(value, buffer + 41, 41);
+    size_t bytes_written = 0;
+    write(STDOUT_FILENO, "(", 1);
+    while (bytes_written != 41)
+      bytes_written += write(STDOUT_FILENO, key, 41);
+    bytes_written = 0;
+    write(STDOUT_FILENO, ",", 1);
+    while (bytes_written != 41)
+      bytes_written += write(STDOUT_FILENO, value, 41);
+    write(STDOUT_FILENO, ")", 1);
+    memset(buffer, '\0', sizeof(buffer));
+    //(<key>,<value>)
   }
   return NULL;
 }

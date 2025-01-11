@@ -1,6 +1,7 @@
 #include "kvs.h"
 #include "string.h"
 #include <ctype.h>
+#include <unistd.h>
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -43,6 +44,19 @@ int write_pair(HashTable *ht, const char *key, const char *value) {
       // overwrite value
       free(keyNode->value);
       keyNode->value = strdup(value);
+
+      // Update clients
+      for(int i = 0; i < keyNode->amount_of_subscriptions; i++){
+        char buffer[82];
+        memset(buffer, '\0', sizeof(buffer));
+        memcpy(buffer, keyNode->key, strlen(key));
+        memcpy(buffer + 41, keyNode->value, strlen(value));
+        size_t bytes_written = 0;
+        while (bytes_written != 82){
+          bytes_written += write(keyNode->notif_fds[i], buffer, 82);
+        }
+      }
+
       return 0;
     }
     previousNode = keyNode;
@@ -97,9 +111,24 @@ int delete_pair(HashTable *ht, const char *key) {
         prevNode->next =
             keyNode->next; // Link the previous node to the next node
       }
+
+      // Update clients
+      for(int i = 0; i < keyNode->amount_of_subscriptions; i++){
+        char buffer[82];
+        memset(buffer, '\0', sizeof(buffer));
+        memcpy(buffer, keyNode->key, strlen(key));
+        memcpy(buffer + 41, "DELETE", strlen("DELETE"));
+        size_t bytes_written = 0;
+        while (bytes_written != 82){
+          bytes_written += write(keyNode->notif_fds[i], buffer, 82);
+        }
+      }
+
+
       // Free the memory allocated for the key and value
       free(keyNode->key);
       free(keyNode->value);
+      free(keyNode->notif_fds);
       free(keyNode); // Free the key node itself
       return 0;      // Exit the function
     }
@@ -155,4 +184,46 @@ char subscribe_table_key(HashTable *ht, const char *key, int notif_fd){
     keyNode = previousNode->next; // Move to the next node
   }
   return 0;
+}
+
+void remove_one_from_int_array(int *array, int size, int to_remove){
+  int *tmp_array = malloc(sizeof(size - 1));
+  for (int i = 0; i < size; i++){
+    for (int a = 0; a < size - 1; a++){
+      if (array[i] != to_remove){
+        tmp_array[a] = array[i];
+        a++;
+        i++;
+      } else {
+        i++;
+      }
+    }
+  }
+  free(array);
+  array = tmp_array;
+}
+
+char unsubscribe_table_key(HashTable *ht, const char *key, int notif_fd){
+  int index = hash(key);
+
+  // Search for the key node
+  KeyNode *keyNode = ht->table[index];
+  KeyNode *previousNode;
+
+  while (keyNode != NULL) {
+    if (strcmp(keyNode->key, key) == 0) {
+      // Encontrou a key na tabela. Vamos procurar se o fd já lá está
+      for (int i = 0; i < keyNode->amount_of_subscriptions; i++){
+        if (notif_fd == keyNode->notif_fds[i]){
+          //Esta key estava a ser subscrita por este cliente. Removemos a subscrição.
+          remove_one_from_int_array(keyNode->notif_fds, keyNode->amount_of_subscriptions, notif_fd);
+          keyNode->amount_of_subscriptions--;
+          return 0;
+        }
+      }
+    }
+    previousNode = keyNode;
+    keyNode = previousNode->next; // Move to the next node
+  }
+  return 1;
 }
