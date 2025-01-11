@@ -174,11 +174,12 @@ int kvs_subscribe(const char *key) {
 
   // mensagem de request
   char subscribe_request[1 + MAX_STRING_SIZE];
-  subscribe_request[0] = 2; // OP_CODE=2 para subscribe
+  printf("MAX STRING SIZE: %d\n", MAX_STRING_SIZE);
+  subscribe_request[0] = 3; // OP_CODE=3 para subscribe
   snprintf(subscribe_request + 1, MAX_STRING_SIZE, "%s", key);
   // mandar a mensagem
   errno = 0;
-  if (write(req_fd, subscribe_request, sizeof(subscribe_request) == -1)) {
+  if (write(req_fd, subscribe_request, sizeof(subscribe_request)) == -1) {
     write_str(STDERR_FILENO,
               "Failed to write subscription request to server pipe\n");
               perror("Error Message");
@@ -191,7 +192,7 @@ int kvs_subscribe(const char *key) {
     return 1;
   }
   // validar a resposta recebida
-  if (response[0] != 2) {
+  if (response[0] != 3) {
     write_str(STDERR_FILENO, "Invalid response code from server\n");
     return 1;
   }

@@ -61,4 +61,10 @@ void set_n_current_backups(int _n_current_backups);
 // @return n_current_backups
 int get_n_current_backups();
 
+/// Subscribes a key
+/// @param key key to be subscribed
+/// @param notif_fd Notifications fd of the subscribing client
+/// @return 1 if the key exists in the table, 0 if it doesn't
+char subscribe_key(char *key, int notif_fd);
+
 #endif // KVS_OPERATIONS_H

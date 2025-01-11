@@ -3,6 +3,7 @@
 #include <ctype.h>
 
 #include <stdlib.h>
+#include <stdio.h>
 
 // Hash function based on key initial.
 // @param key Lowercase alphabetical string.
@@ -51,6 +52,8 @@ int write_pair(HashTable *ht, const char *key, const char *value) {
   keyNode = malloc(sizeof(KeyNode));
   keyNode->key = strdup(key);       // Allocate memory for the key
   keyNode->value = strdup(value);   // Allocate memory for the value
+  keyNode->amount_of_subscriptions = 0;
+  keyNode->notif_fds = NULL;
   keyNode->next = ht->table[index]; // Link to existing nodes
   ht->table[index] = keyNode; // Place new key node at the start of the list
   return 0;
@@ -120,4 +123,36 @@ void free_table(HashTable *ht) {
   }
   pthread_rwlock_destroy(&ht->tablelock);
   free(ht);
+}
+
+char subscribe_table_key(HashTable *ht, const char *key, int notif_fd){
+  int index = hash(key);
+
+  // Search for the key node
+  KeyNode *keyNode = ht->table[index];
+  KeyNode *previousNode;
+
+  while (keyNode != NULL) {
+    if (strcmp(keyNode->key, key) == 0) {
+      // Encontrou a key na tabela. Vamos procurar se o fd já lá está
+      for (int i = 0; i < keyNode->amount_of_subscriptions; i++){
+        if (notif_fd == keyNode->notif_fds[i]){
+          //Esta key já estava a ser subscrita por este cliente. Não fazemos nada, mas operação teve sucesso.
+          return 1;
+        }
+      }
+      //A key existe mas não estava a ser seguida por este cliente. Acrescentamos este notif_fd a esta key.
+      keyNode->notif_fds = realloc(keyNode->notif_fds, sizeof(int) * (keyNode->amount_of_subscriptions + 1));
+      if (!keyNode->notif_fds){
+        perror("Realloc failed");
+        return 0;
+      }
+      keyNode->notif_fds[keyNode->amount_of_subscriptions] = notif_fd;
+      keyNode->amount_of_subscriptions++;
+      return 1;
+    }
+    previousNode = keyNode;
+    keyNode = previousNode->next; // Move to the next node
+  }
+  return 0;
 }

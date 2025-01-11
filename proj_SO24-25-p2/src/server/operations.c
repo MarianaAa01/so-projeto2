@@ -180,3 +180,11 @@ void kvs_wait(unsigned int delay_ms) {
   struct timespec delay = delay_to_timespec(delay_ms);
   nanosleep(&delay, NULL);
 }
+
+char subscribe_key(char *key, int notif_fd){
+    int subscription_result;
+    pthread_rwlock_wrlock(&kvs_table->tablelock);
+    subscription_result = subscribe_table_key(kvs_table, key, notif_fd);
+    pthread_rwlock_unlock(&kvs_table->tablelock);
+    return subscription_result;
+}

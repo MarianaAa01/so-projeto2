@@ -15,16 +15,8 @@
 #include "operations.h"
 #include "parser.h"
 #include "pthread.h"
+//#include "subscribed_keys_list.h"
 
-#define OPCODE 0
-#define RESULT 1
-
-// to store the keys that are subscribed at the moment
-typedef struct keys_in_subscription{
-  char key[MAX_STRING_SIZE];
-  int *notif_fds;
-  struct keyInSubscription *next;
-} subscribed_key;
 
 // to store whate we need in the client thread function
 typedef struct clientInfo {
@@ -32,7 +24,7 @@ typedef struct clientInfo {
   char req_pipe_path[40];
   char resp_pipe_path[40];
   char notif_pipe_path[40];
-  subscribed_key **subscribed_keys_table;
+  //subscribed_key **subscribed_keys_table;
 } c_info;
 
 // info partilhada entre threads
@@ -310,7 +302,7 @@ static void *client_thread(void *arg_struct) {
     // Escreve para o FIFO de respostas que a conexão não foi feita com sucesso
     return NULL;
   }
-  // escrever as notificações pro cliente
+  // escrever as notificações para o cliente
   int notif_fd = open(client_information.notif_pipe_path, O_WRONLY);
   if (notif_fd == -1) {
     close(req_fd);
@@ -330,11 +322,7 @@ static void *client_thread(void *arg_struct) {
       // se lermos um 0, breaks the loop
       break;
     }
-    /*
-    fazer uma hashtable de keys, clientes
-    cada vez que uma key for mudada, isso avisa logo todos os clientes que estão
-    subscritos àquela key
-    */
+    succeeded[OPCODE] = buffer[0];
     // faz algo consoante o OP_CODE recebido na request_message (buffer[0])
     switch (buffer[0]) {
     case 3: { // OP_CODE do subscribe
@@ -342,18 +330,9 @@ static void *client_thread(void *arg_struct) {
       char key[MAX_STRING_SIZE];
       memcpy(key, buffer + 1, (size_t)(bytes_read - 1));
       key[bytes_read - 1] = '\0';
+      //Subscrevemos a key pretendida
+      succeeded[RESULT] = subscribe_key(key, notif_fd);
       write(resp_fd, &succeeded, sizeof(succeeded)); // responder ao cliente
-      // Attempt to subscribe to the key:
-      // se correr tudo bem dá pra fazer o subscribe
-      //CODIGO if (kvs_subscribe(key) == 0) {
-        //CODIGO write(resp_fd, &succeeded, sizeof(succeeded));
-        // ADICIONAR AQUI O CLIENTE À HASHTABLE COM LINKED LIST DE CLIENTES
-        // SUBSCRITOS POR KEY
-      //CODIGO } else {
-        //CODIGO succeeded[0] = 0;
-        //CODIGO write(resp_fd, &succeeded, sizeof(succeeded));
-        //CODIGO write_str(STDERR_FILENO, "Unable to subscribe\n");
-      //CODIGO }
       break;
     }
     case 4: { // OP_CODE do unsubscribe
@@ -362,16 +341,6 @@ static void *client_thread(void *arg_struct) {
       memcpy(unsubscribe_key, buffer + 1, (size_t)bytes_read - 1);
       unsubscribe_key[bytes_read - 1] = '\0';
       write(resp_fd, &succeeded, sizeof(succeeded)); // Respond to the client
-      // Attempt to unsubscribe from the key
-      //CODIGO if (kvs_unsubscribe(unsubscribe_key) == 0) { // Successfully unsubscribed
-        //CODIGO write(resp_fd, &succeeded, sizeof(succeeded));
-        // RETIRAR AQUI O CLIENTE À HASHTABLE COM LINKED LIST DE CLIENTES
-        // SUBSCRITOS POR KEY
-      //CODIGO } else {
-        //CODIGO succeeded[0] = 0;
-        //CODIGO write(resp_fd, &succeeded, sizeof(succeeded));
-        //CODIGO write_str(STDERR_FILENO, "Unable to unsubscribe\n");
-      //CODIGO }
       break;
     }
     }
@@ -516,11 +485,6 @@ int main(int argc, char **argv) {
   // Criamos uma thread para controlar a comunicaçao cliente-servidor (parte 2 -
   // exercicio 1.1, so 1 cliente)
   pthread_t thread_client;
-  // Criamos a lista das chaves subscritas
-  subscribed_key **subscribed_keys_head = malloc(sizeof(subscribed_key*));
-  if (!subscribed_keys_head)
-    return 1;
-  single_client_info.subscribed_keys_table = subscribed_keys_head;
   pthread_create(&thread_client, NULL, client_thread,
                  (void *)&single_client_info);
 

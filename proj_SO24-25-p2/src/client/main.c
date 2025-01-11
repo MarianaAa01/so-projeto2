@@ -13,6 +13,18 @@
 
 void write_str(int fd, const char *str) { write(fd, str, strlen(str)); }
 
+void *get_notifications(void *fd){
+  char buffer[82];
+    char chave[41];
+    char valor[41];
+  int *notif_fd;
+  notif_fd = (int *)fd;
+  while (read(*notif_fd, buffer, 82)){
+    //(<chave>,<valor>)
+  }
+  return NULL;
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 3) {
     fprintf(stderr, "Usage: %s <client_unique_id> <register_pipe_path>\n",
@@ -40,6 +52,9 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "Failed to connect to the server.\n");
     return 1;
   }
+
+  pthread_t notifications_receiver;
+  pthread_create(&notifications_receiver, NULL, get_notifications, (void *)&notif_pipe);
 
   while (1) {
     switch (get_next(STDIN_FILENO)) {
