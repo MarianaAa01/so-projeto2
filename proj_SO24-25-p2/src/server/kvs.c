@@ -230,7 +230,6 @@ char unsubscribe_table_key(HashTable *ht, const char *key, int notif_fd){
 
 char global_unsubscribe(HashTable *ht, int notif_fd) {
   pthread_rwlock_wrlock(&ht->tablelock); // lock the table for writing
-
   for (int i = 0; i < TABLE_SIZE; i++) {
     KeyNode *keyNode = ht->table[i];
     while (keyNode != NULL) {

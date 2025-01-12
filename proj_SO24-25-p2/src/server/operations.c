@@ -215,7 +215,7 @@ void kvs_wait(unsigned int delay_ms)
 
 char subscribe_key(char *key, int notif_fd)
 {
-  int subscription_result;
+  char subscription_result;
   pthread_rwlock_wrlock(&kvs_table->tablelock);
   subscription_result = subscribe_table_key(kvs_table, key, notif_fd);
   pthread_rwlock_unlock(&kvs_table->tablelock);
@@ -224,7 +224,7 @@ char subscribe_key(char *key, int notif_fd)
 
 char unsubscribe_key(char *key, int notif_fd)
 {
-  int subscription_result;
+  char subscription_result;
   pthread_rwlock_wrlock(&kvs_table->tablelock);
   subscription_result = unsubscribe_table_key(kvs_table, key, notif_fd);
   pthread_rwlock_unlock(&kvs_table->tablelock);

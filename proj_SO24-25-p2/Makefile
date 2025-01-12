@@ -38,11 +38,17 @@ re:
 	@make clean
 	@make
 
-lldb_client:
+lldb_client1:
 	lldb ./src/client/client 100 /tmp/apagar
 
-client:
+lldb_client2:
+	lldb ./src/client/client 200 /tmp/apagar
+
+client1:
 	./src/client/client 100 /tmp/apagar
+
+client2:
+	./src/client/client 200 /tmp/apagar
 
 lldb_server:
 	lldb ./src/server/kvs src/server/jobs 10 10 /tmp/apagar
@@ -51,4 +57,4 @@ server:
 	./src/server/kvs src/server/jobs 10 10 /tmp/apagar
 
 clean_fds:
-	rm /tmp/apagar /tmp/notif100 /tmp/req100 /tmp/resp100
+	rm /tmp/apagar /tmp/notif* /tmp/req* /tmp/resp*

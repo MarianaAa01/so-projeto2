@@ -196,7 +196,7 @@ int kvs_disconnect(char const *req_pipe_path, char const *resp_pipe_path,
     write_str(STDERR_FILENO, "Invalid response code from server\n");
     return 1;
   } else {
-    char message[42] = "Server returned ";
+    char message[44] = "Server returned ";
     message[16] = '0' + response[1];
     strncat(message, " for operation: disconnect\n",
             sizeof(message) - strlen(message) - 1);

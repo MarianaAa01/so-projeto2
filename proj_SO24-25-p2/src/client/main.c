@@ -85,8 +85,6 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Failed to disconnect to the server\n");
         return 1;
       }
-      // TODO: end notifications thread
-      printf("Disconnected from server\n");
       return 0;
 
     case CMD_SUBSCRIBE:

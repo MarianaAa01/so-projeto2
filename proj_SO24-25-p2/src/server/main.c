@@ -38,11 +38,14 @@ struct SharedData
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t n_current_backups_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t session_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t buffer_mutex = PTHREAD_MUTEX_INITIALIZER; // protege o buffer produtor-consumidor
 
 size_t active_backups = 0; // Number of active backups
 size_t max_backups;        // Maximum allowed simultaneous backups
 size_t max_threads;        // Maximum allowed simultaneous threads
 char *jobs_directory = NULL;
+
+char buffer[121]; // buffer produtor-consumidor
 
 int filter_job_files(
     const struct dirent *entry)
@@ -298,24 +301,41 @@ static void *get_file(void *arguments)
   pthread_exit(NULL);
 }
 
+static void *host_thread(void *fd){
+  int server_fd;
+  server_fd = *(int *)fd;
+  while (1){
+    if (read(server_fd, buffer, 121) == -1)
+    {
+      write_str(STDERR_FILENO, "Read failed.\n");
+      printf("Buffer mutex unlocked in host_thread due to read failure\n"); //DEBUG
+      return NULL;
+    }
+  }
+  return NULL;
+}
+
 static void *client_thread(void *arg_struct)
 {
   c_info client_information;
   client_information = *(c_info *)arg_struct;
-  char buffer[121]; // request_message do cliente
   char succeeded[2];
   succeeded[OPCODE] = 1;
   succeeded[RESULT] = 0;
+  char req_buffer[121];
+  int buffer_escrito = 0;
 
   // lock para termos uma sessão de cada vez
-  pthread_mutex_lock(&session_mutex);
-
+  //pthread_mutex_lock(&session_mutex);
   // ler request_message do cliente
-  if (read(client_information.server_fd, buffer, 121) == -1)
-  {
-    write_str(STDERR_FILENO, "Read failed.\n");
-    return NULL;
+  while (!buffer_escrito){
+    pthread_mutex_lock(&buffer_mutex);
+    if (buffer[0] == '\0'){
+      pthread_mutex_unlock(&buffer_mutex);
+    } else
+      buffer_escrito = 1;
   }
+
   // verificar  OP_CODE é 1 (connection request)
   if (buffer[0] != 1)
   {
@@ -325,6 +345,9 @@ static void *client_thread(void *arg_struct)
   memcpy(client_information.req_pipe_path, buffer + 1, 40);
   memcpy(client_information.resp_pipe_path, buffer + 41, 40);
   memcpy(client_information.notif_pipe_path, buffer + 81, 40);
+  memset(buffer, '\0', sizeof(buffer));
+  pthread_mutex_unlock(&buffer_mutex);
+  printf("Client connected. Request pipe: %s, Response pipe: %s, Notification pipe: %s\n", client_information.req_pipe_path, client_information.resp_pipe_path, client_information.notif_pipe_path); //DEBUG
   // primeiro lemos o request
   int req_fd = open(client_information.req_pipe_path, O_RDONLY);
   if (req_fd == -1)
@@ -355,26 +378,30 @@ static void *client_thread(void *arg_struct)
   }
   // Escreve para o FIFO de respostas que a conexão foi feita com sucesso
   write(resp_fd, &succeeded, sizeof(succeeded));
+  printf("Client connection successful\n"); //DEBUG
   // loop para estar sempre a ler e a responder a requests de clients
 
-  while (buffer[0] != 2)
+  memset(req_buffer, '\0', sizeof(req_buffer));
+  while (req_buffer[0] != 2)
   { // sai daqui quando o cliente quer dar disconnect
-    ssize_t bytes_read = read(req_fd, buffer, sizeof(buffer));
+    ssize_t bytes_read = read(req_fd, req_buffer, sizeof(req_buffer));
     if (bytes_read <= 0)
     {
       // se lermos um 0, breaks the loop
       break;
     }
-    succeeded[OPCODE] = buffer[0];
-    // faz algo consoante o OP_CODE recebido na request_message (buffer[0])
-    switch (buffer[0])
+    succeeded[OPCODE] = req_buffer[0];
+    printf("Client request: %d\n", succeeded[OPCODE]); //DEBUG
+    // faz algo consoante o OP_CODE recebido na request_message (req_buffer[0])
+    switch (req_buffer[0])
     {
     case 3:
     { // OP_CODE do subscribe
       // Obter a key que o cliente quer subscrever
       char s_key[MAX_STRING_SIZE];
-      memcpy(s_key, buffer + 1, (size_t)(bytes_read - 1));
+      memcpy(s_key, req_buffer + 1, (size_t)(bytes_read - 1));
       s_key[bytes_read - 1] = '\0';
+      printf("Client wants to subscribe to key: %s\n", s_key); //DEBUG
       // Subscrevemos a key pretendida
       succeeded[RESULT] = subscribe_key(s_key, notif_fd);
       write(resp_fd, &succeeded, sizeof(succeeded)); // responder ao cliente
@@ -384,8 +411,9 @@ static void *client_thread(void *arg_struct)
     { // OP_CODE do unsubscribe
       // Obter a key que o cliente quer dessubscrever
       char u_key[MAX_STRING_SIZE];
-      memcpy(u_key, buffer + 1, (size_t)bytes_read - 1);
+      memcpy(u_key, req_buffer + 1, (size_t)bytes_read - 1);
       u_key[bytes_read - 1] = '\0';
+      printf("Client wants to unsubscribe from key: %s\n", u_key); //DEBUG
       // Subscrevemos a key pretendida
       succeeded[RESULT] = unsubscribe_key(u_key, notif_fd);
       write(resp_fd, &succeeded, sizeof(succeeded)); // Respond to the client
@@ -397,14 +425,15 @@ static void *client_thread(void *arg_struct)
   message[OPCODE] = 2;
   message[RESULT] = 0;
   write(resp_fd, &message, sizeof(message)); // manda ao cliente o result
-  printf("Client disconnected\n"); //debug
+  unsubscribe_client(notif_fd);
+  printf("Client disconnected\n"); //DEBUG
 
   // fechar os file descriptors
   close(req_fd);
   close(resp_fd);
   close(notif_fd);
   // unlock
-  pthread_mutex_unlock(&session_mutex);
+  //pthread_mutex_unlock(&session_mutex);
   return NULL;
 }
 
@@ -552,11 +581,22 @@ int main(int argc, char **argv)
 
   single_client_info.server_fd = server_fd;
 
+  //Colocamos o buffer a nulo
+  memset(buffer, '\0', sizeof(buffer));
+
+  //Lançamos a thread anfitria
+  pthread_t thread_host;
+  pthread_create(&thread_host, NULL, host_thread,
+                 (void *)&server_fd);  
+
   // Criamos uma thread para controlar a comunicaçao cliente-servidor (parte 2 -
   // exercicio 1.1, so 1 cliente)
-  pthread_t thread_client;
-  pthread_create(&thread_client, NULL, client_thread,
+  pthread_t thread_client[S];
+  for (int i = 0; i < S; i++){
+    pthread_create(&(thread_client[i]), NULL, client_thread,
                  (void *)&single_client_info);
+  }
+
 
   // cria e organiza/gerencia as threads como já vimos
   dispatch_threads(dir);
@@ -568,7 +608,10 @@ int main(int argc, char **argv)
     return 0;
   }
 
-  pthread_join(thread_client, NULL); // Da join da thread cliente
+  for (int i = 0; i < S; i++){
+    pthread_join(thread_client[i], NULL);
+  }
+  pthread_join(thread_host, NULL); // Da join da thread cliente
 
   // sincronizar backups ativos
   /*cada vez que o backup é concluído, o active_backups é decrementado
