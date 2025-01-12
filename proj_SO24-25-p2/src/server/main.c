@@ -18,9 +18,9 @@
 #include "pthread.h"
 //#include "subscribed_keys_list.h"
 
-pthread_cond_t buffer_full; // condicao para avisar as threads de que o buffer esta cheio
+//pthread_cond_t buffer_full; // condicao para avisar as threads de que o buffer esta cheio
 char boss_thread_buffer[121]; // buffer produtor-consumidor onde se guardam as mensagens de request
-pthread_mutex_t buffer_mutex; // mutex para controlar as escritas no buffer produtor-consumidor
+//pthread_mutex_t buffer_mutex; // mutex para controlar as escritas no buffer produtor-consumidor
 
 // to store whate we need in the client thread function
 typedef struct clientInfo {
@@ -283,10 +283,11 @@ static void *boss_thread(void *fd){
       return NULL;
 	} else {
 		sem_wait("sessions");
-		pthread_mutex_lock(&buffer_mutex);
+		//pthread_mutex_lock(&buffer_mutex);
 		// Avisamos uma das threads de que o buffer esta cheio.
 		// Essa thread desbloqueia o lock depois de utilizar o info no buffer.
-		pthread_cond_signal(&buffer_full);
+		//pthread_cond_signal(&buffer_full);
+    //pthread_mutex_unlock(&buffer_full);
 	}
   }
   sem_close("sessions");
@@ -304,22 +305,25 @@ while (1){
   pthread_mutex_lock(&session_mutex);
 
   //ler mensagem
-  while(boss_thread_buffer[0] == '\0')
-	pthread_cond_wait(&buffer_full, &buffer_mutex);
+  //pthread_mutex_lock(&buffer_mutex);
+  while(boss_thread_buffer[0] == '\0'){
+
+  }
+	  //pthread_cond_wait(&buffer_full, &buffer_mutex);
 
   // verificar  OP_CODE é 1 (connection request)
   if (boss_thread_buffer[0] != 1) {
     write_str(STDERR_FILENO, "Invalid operation code in client request.\n");
     return NULL;
   }
-  memset(boss_thread_buffer, '\0', sizeof(boss_thread_buffer));
-  pthread_mutex_unlock(&buffer_mutex);
   char req_pipe_path[40];
   char resp_pipe_path[40];
   char notif_pipe_path[40];
   memcpy(req_pipe_path, boss_thread_buffer + 1, 40);
   memcpy(resp_pipe_path, boss_thread_buffer + 41, 40);
   memcpy(notif_pipe_path, boss_thread_buffer + 81, 40);
+  memset(boss_thread_buffer, '\0', sizeof(boss_thread_buffer));
+  //pthread_mutex_unlock(&buffer_mutex);
   // primeiro lemos o request
   int req_fd = open(req_pipe_path, O_RDONLY);
   if (req_fd == -1) {
@@ -515,10 +519,10 @@ int main(int argc, char **argv) {
 
   memset(boss_thread_buffer, '\0', sizeof(boss_thread_buffer));
   // init da condicao das threads
-  pthread_cond_init(&buffer_full, NULL);
+  //pthread_cond_init(&buffer_full, NULL);
 
   // init da mutex do buffer produtor consumidor
-  pthread_mutex_init(&buffer_mutex, NULL);
+  //pthread_mutex_init(&buffer_mutex, NULL);
 
   // Criamos uma thread anfitria para organizar os pedidos de connect ao server
   pthread_t thread_boss;
@@ -567,7 +571,7 @@ int main(int argc, char **argv) {
 
   kvs_terminate();
   unlink(nome_do_FIFO_de_registo); // tirar o FIFO em caso de erro
-  pthread_cond_destroy(&buffer_full);
-  pthread_mutex_destroy(&buffer_mutex);
+  //pthread_cond_destroy(&buffer_full);
+  //pthread_mutex_destroy(&buffer_mutex);
   return 0;
 }
