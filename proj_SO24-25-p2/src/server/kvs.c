@@ -154,7 +154,7 @@ void free_table(HashTable *ht) {
   free(ht);
 }
 
-char subscribe_table_key(HashTable *ht, const char *key, int notif_fd){
+char subscribe_table_key(HashTable *ht, const char *key, int notif_fd) {
   int index = hash(key);
 
   // Search for the key node
@@ -164,18 +164,19 @@ char subscribe_table_key(HashTable *ht, const char *key, int notif_fd){
   while (keyNode != NULL) {
     if (strcmp(keyNode->key, key) == 0) {
       // Encontrou a key na tabela. Vamos procurar se o fd já lá está
-      for (int i = 0; i < keyNode->amount_of_subscriptions; i++){
-        if (notif_fd == keyNode->notif_fds[i]){
-          //Esta key já estava a ser subscrita por este cliente. Não fazemos nada, mas operação teve sucesso.
+      for (int i = 0; i < keyNode->amount_of_subscriptions; i++) {
+        if (notif_fd == keyNode->notif_fds[i]) {
+          // Esta key já estava a ser subscrita por este cliente. Não fazemos nada, mas operação teve sucesso.
           return 1;
         }
       }
-      //A key existe mas não estava a ser seguida por este cliente. Acrescentamos este notif_fd a esta key.
-      keyNode->notif_fds = realloc(keyNode->notif_fds, sizeof(int) * (keyNode->amount_of_subscriptions + 1));
-      if (!keyNode->notif_fds){
+      // A key existe mas não estava a ser seguida por este cliente. Acrescentamos este notif_fd a esta key.
+      int *new_fds = realloc(keyNode->notif_fds, sizeof(int) * (keyNode->amount_of_subscriptions + 1));
+      if (!new_fds) {
         perror("Realloc failed");
         return 0;
       }
+      keyNode->notif_fds = new_fds;
       keyNode->notif_fds[keyNode->amount_of_subscriptions] = notif_fd;
       keyNode->amount_of_subscriptions++;
       return 1;
@@ -186,24 +187,23 @@ char subscribe_table_key(HashTable *ht, const char *key, int notif_fd){
   return 0;
 }
 
-void remove_one_from_int_array(int *array, int size, int to_remove){
-  int *tmp_array = malloc(sizeof(size - 1));
-  for (int i = 0; i < size; i++){
-    for (int a = 0; a < size - 1; a++){
-      if (array[i] != to_remove){
-        tmp_array[a] = array[i];
-        a++;
-        i++;
-      } else {
-        i++;
-      }
+int* remove_one_from_int_array(int *array, int size, int to_remove) {
+  int *tmp_array = malloc(sizeof(int) * (size - 1));
+  if (!tmp_array) {
+    perror("Malloc failed");
+    return array; // Retorna o array original em caso de falha
+  }
+  int j = 0;
+  for (int i = 0; i < size; i++) {
+    if (array[i] != to_remove) {
+      tmp_array[j++] = array[i];
     }
   }
   free(array);
-  array = tmp_array;
+  return tmp_array;
 }
 
-char unsubscribe_table_key(HashTable *ht, const char *key, int notif_fd){
+char unsubscribe_table_key(HashTable *ht, const char *key, int notif_fd) {
   int index = hash(key);
 
   // Search for the key node
@@ -213,10 +213,10 @@ char unsubscribe_table_key(HashTable *ht, const char *key, int notif_fd){
   while (keyNode != NULL) {
     if (strcmp(keyNode->key, key) == 0) {
       // Encontrou a key na tabela. Vamos procurar se o fd já lá está
-      for (int i = 0; i < keyNode->amount_of_subscriptions; i++){
-        if (notif_fd == keyNode->notif_fds[i]){
-          //Esta key estava a ser subscrita por este cliente. Removemos a subscrição.
-          remove_one_from_int_array(keyNode->notif_fds, keyNode->amount_of_subscriptions, notif_fd);
+      for (int i = 0; i < keyNode->amount_of_subscriptions; i++) {
+        if (notif_fd == keyNode->notif_fds[i]) {
+          // Esta key estava a ser subscrita por este cliente. Removemos a subscrição.
+          keyNode->notif_fds = remove_one_from_int_array(keyNode->notif_fds, keyNode->amount_of_subscriptions, notif_fd);
           keyNode->amount_of_subscriptions--;
           return 0;
         }
