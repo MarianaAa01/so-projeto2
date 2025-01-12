@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <signal.h>
 
 #include "constants.h"
 #include "io.h"
@@ -317,6 +318,17 @@ static void *host_thread(void *fd){
 
 static void *client_thread(void *arg_struct)
 {
+  //BLOQUEAR SIGUSR1 NAS THREADS DE CLIENTES
+  sigset_t signal_mask;
+  sigemptyset(&signal_mask); //inicialização da signal_mask vazia
+  sigaddset(&signal_mask, SIGUSR1); //adiciona o sinal SIGUSR1 à signal_mask (signals que vão ser bloqueados)
+  //usar pthread_sigmask() com a operação SIG_BLOCK
+  if (pthread_sigmask(SIG_BLOCK, &signal_mask, NULL) != 0)
+  {
+    perror("Error setting signal mask");
+    return NULL;
+  }
+
   c_info client_information;
   client_information = *(c_info *)arg_struct;
   char succeeded[2];
@@ -324,6 +336,8 @@ static void *client_thread(void *arg_struct)
   succeeded[RESULT] = 0;
   char req_buffer[121];
   int buffer_escrito = 0;
+  
+  
 
   // lock para termos uma sessão de cada vez
   //pthread_mutex_lock(&session_mutex);
@@ -485,8 +499,28 @@ static void dispatch_threads(DIR *dir)
   free(threads);
 }
 
+
+  //SIGNAL_HANDLER
+  void sig_handler(int signal) {
+    if (signal == SIGUSR1) {
+      printf("Recebi o sinal SIGUSR1\n");
+      //eliminar todas as subscrições de todos os clientes da hashtable (o array de notif_fds)
+      //encerrar todos os FIFOs de notificações e de resposta dos clientes(para cada client faço close(notif_fd) e close(resp_fd))
+
+      //O SERVER NÃO TERMINA
+      //printf("Handled SIGUSR1: All subscriptions removed and FIFOs closed.\n"); //para debug
+    } else {
+      printf("Recebi um sinal inesperado: %d\n", sig); //debug
+    }
+  }
+
+
 int main(int argc, char **argv)
 {
+  //receber aqui o signal e mandar pro sig_handler
+  //(acho que usar o sigaction é melhor mas tava a dar bue erro e como só damos handle a um signal n faz tanta diferença)
+  signal(SIGUSR1, sig_handler);
+
   // se os argumentos todos n forem apresentados o programa termina
   if (argc < 5)
   {
