@@ -38,8 +38,9 @@ struct SharedData
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t n_current_backups_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t session_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t buffer_mutex = PTHREAD_MUTEX_INITIALIZER; // protege o buffer produtor-consumidor
+pthread_cond_t buffer_cond = PTHREAD_COND_INITIALIZER; // protege o buffer produtor-consumidor
+
 
 size_t active_backups = 0; // Number of active backups
 size_t max_backups;        // Maximum allowed simultaneous backups
@@ -227,7 +228,6 @@ static void *get_file(void *arguments)
   DIR *dir = thread_data->dir;
   char *dir_name = thread_data->dir_name;
 
-  // lock para apenas uma thread ler de cada vez
   if (pthread_mutex_lock(&thread_data->directory_mutex) != 0)
   {
     fprintf(stderr, "Thread failed to lock directory_mutex\n");
@@ -302,22 +302,32 @@ static void *get_file(void *arguments)
   pthread_exit(NULL);
 }
 
-static void *host_thread(void *fd){
-  int server_fd;
-  server_fd = *(int *)fd;
-  while (1){
-    if (read(server_fd, buffer, 121) == -1)
-    {
-      write_str(STDERR_FILENO, "Read failed.\n");
-      printf("Buffer mutex unlocked in host_thread due to read failure\n"); //DEBUG
-      return NULL;
+static void *host_thread(void *fd) {
+    int server_fd;
+    server_fd = *(int *)fd;
+    while (1) {
+        // Bloqueamos o mutex que protege o buffer produtor-consumidor
+        pthread_mutex_lock(&buffer_mutex);
+        while (buffer[0] != '\0') {
+            // Enquanto o buffer não for esvaziado, a host_thread
+            // espera que outra thread sinalize que já é seguro
+            // reescrever no buffer
+            pthread_cond_wait(&buffer_cond, &buffer_mutex);
+        }
+        if (read(server_fd, buffer, 121) == -1) {
+            write_str(STDERR_FILENO, "Read failed.\n");
+            pthread_mutex_unlock(&buffer_mutex);
+            return NULL;
+        }
+        // Desbloqueamos o mutex e "acordamos" uma das client_threads
+        // para processar o que está no buffer
+        pthread_cond_signal(&buffer_cond);
+        pthread_mutex_unlock(&buffer_mutex);
     }
-  }
-  return NULL;
+    return NULL;
 }
 
-static void *client_thread(void *arg_struct)
-{
+static void *client_thread(void *arg_struct) {
   //BLOQUEAR SIGUSR1 NAS THREADS DE CLIENTES
   sigset_t signal_mask;
   sigemptyset(&signal_mask); //inicialização da signal_mask vazia
@@ -329,126 +339,111 @@ static void *client_thread(void *arg_struct)
     return NULL;
   }
 
-  c_info client_information;
-  client_information = *(c_info *)arg_struct;
-  char succeeded[2];
-  succeeded[OPCODE] = 1;
-  succeeded[RESULT] = 0;
-  char req_buffer[121];
-  int buffer_escrito = 0;
-  
-  
+    c_info client_information;
+    client_information = *(c_info *)arg_struct;
+    char succeeded[2];
+    succeeded[OPCODE] = 1;
+    succeeded[RESULT] = 0;
+    char req_buffer[121];
+    int buffer_escrito = 0;
 
-  // lock para termos uma sessão de cada vez
-  //pthread_mutex_lock(&session_mutex);
-  // ler request_message do cliente
-  while (!buffer_escrito){
+    // ler request_message do cliente
     pthread_mutex_lock(&buffer_mutex);
-    if (buffer[0] == '\0'){
-      pthread_mutex_unlock(&buffer_mutex);
-    } else
-      buffer_escrito = 1;
-  }
+    while (buffer[0] == '\0') {
+        // Enquanto o buffer estiver vazio, a client_thread que a host_thread
+        // sinalize que é seguro escrever no buffer
+        pthread_cond_wait(&buffer_cond, &buffer_mutex);
+    }
 
-  // verificar  OP_CODE é 1 (connection request)
-  if (buffer[0] != 1)
-  {
-    write_str(STDERR_FILENO, "Invalid operation code in client request.\n");
-    return NULL;
-  }
-  memcpy(client_information.req_pipe_path, buffer + 1, 40);
-  memcpy(client_information.resp_pipe_path, buffer + 41, 40);
-  memcpy(client_information.notif_pipe_path, buffer + 81, 40);
-  memset(buffer, '\0', sizeof(buffer));
-  pthread_mutex_unlock(&buffer_mutex);
-  printf("Client connected. Request pipe: %s, Response pipe: %s, Notification pipe: %s\n", client_information.req_pipe_path, client_information.resp_pipe_path, client_information.notif_pipe_path); //DEBUG
-  // primeiro lemos o request
-  int req_fd = open(client_information.req_pipe_path, O_RDONLY);
-  if (req_fd == -1)
-  {
-    write_str(STDERR_FILENO, "Open failed\n");
-    return NULL;
-  }
-  // escrever a resposta para o cliente
-  int resp_fd = open(client_information.resp_pipe_path, O_WRONLY);
-  if (resp_fd == -1)
-  {
-    close(req_fd);
-    write_str(STDERR_FILENO, "Open failed\n");
-    // Escreve para o FIFO de respostas que a conexão não foi feita com sucesso
-    return NULL;
-  }
-  // escrever as notificações para o cliente
-  int notif_fd = open(client_information.notif_pipe_path, O_WRONLY);
-  if (notif_fd == -1)
-  {
+    // verificar  OP_CODE é 1 (connection request)
+    if (buffer[0] != 1) {
+        write_str(STDERR_FILENO, "Invalid operation code in client request.\n");
+        pthread_mutex_unlock(&buffer_mutex);
+        return NULL;
+    }
+    memcpy(client_information.req_pipe_path, buffer + 1, 40);
+    memcpy(client_information.resp_pipe_path, buffer + 41, 40);
+    memcpy(client_information.notif_pipe_path, buffer + 81, 40);
+    // Esvaziamos o buffer produtor-consumidor, pois já foi processada
+    // a informação que lá estava
+    memset(buffer, '\0', sizeof(buffer));
+    // Desbloqueamos o mutex e "acordamos" a host_thread para voltar
+    // a receber requests de início de sessão
+    pthread_cond_signal(&buffer_cond);
+    pthread_mutex_unlock(&buffer_mutex);
+
+    // primeiro lemos o request
+    int req_fd = open(client_information.req_pipe_path, O_RDONLY);
+    if (req_fd == -1) {
+        write_str(STDERR_FILENO, "Open failed\n");
+        return NULL;
+    }
+    // escrever a resposta para o cliente
+    int resp_fd = open(client_information.resp_pipe_path, O_WRONLY);
+    if (resp_fd == -1) {
+        close(req_fd);
+        write_str(STDERR_FILENO, "Open failed\n");
+        // Escreve para o FIFO de respostas que a conexão não foi feita com sucesso
+        return NULL;
+    }
+    // escrever as notificações para o cliente
+    int notif_fd = open(client_information.notif_pipe_path, O_WRONLY);
+    if (notif_fd == -1) {
+        close(req_fd);
+        close(resp_fd);
+        write_str(STDERR_FILENO, "Open failed\n");
+        // Escreve para o FIFO de respostas que a conexão não foi feita com sucesso
+        succeeded[RESULT] = 1;
+        write(resp_fd, &succeeded, sizeof(succeeded));
+        return NULL;
+    }
+    // Escreve para o FIFO de respostas que a conexão foi feita com sucesso
+    write(resp_fd, &succeeded, sizeof(succeeded));
+
+    // loop para estar sempre a ler e a responder a requests de clients
+    memset(req_buffer, '\0', sizeof(req_buffer));
+    while (req_buffer[0] != 2) { // sai daqui quando o cliente quer dar disconnect
+        ssize_t bytes_read = read(req_fd, req_buffer, sizeof(req_buffer));
+        if (bytes_read <= 0) {
+            // se lermos um 0, breaks the loop
+            break;
+        }
+        succeeded[OPCODE] = req_buffer[0];
+        // faz algo consoante o OP_CODE recebido na request_message (req_buffer[0])
+        switch (req_buffer[0]) {
+        case 3: { // OP_CODE do subscribe
+            // Obter a key que o cliente quer subscrever
+            char s_key[MAX_STRING_SIZE];
+            memcpy(s_key, req_buffer + 1, (size_t)(bytes_read - 1));
+            s_key[bytes_read - 1] = '\0';
+            // Subscrevemos a key pretendida
+            succeeded[RESULT] = subscribe_key(s_key, notif_fd);
+            write(resp_fd, &succeeded, sizeof(succeeded)); // responder ao cliente
+            break;
+        }
+        case 4: { // OP_CODE do unsubscribe
+            // Obter a key que o cliente quer dessubscrever
+            char u_key[MAX_STRING_SIZE];
+            memcpy(u_key, req_buffer + 1, (size_t)bytes_read - 1);
+            u_key[bytes_read - 1] = '\lo';
+            // Subscrevemos a key pretendida
+            succeeded[RESULT] = unsubscribe_key(u_key, notif_fd);
+            write(resp_fd, &succeeded, sizeof(succeeded)); // Respond to the client
+            break;
+        }
+        }
+    }
+    char message[2];
+    message[OPCODE] = 2;
+    message[RESULT] = 0;
+    write(resp_fd, &message, sizeof(message)); // manda ao cliente o result
+    unsubscribe_client(notif_fd);
+
+    // fechar os file descriptors
     close(req_fd);
     close(resp_fd);
-    write_str(STDERR_FILENO, "Open failed\n");
-    // Escreve para o FIFO de respostas que a conexão não foi feita com sucesso
-    succeeded[RESULT] = 1;
-    write(resp_fd, &succeeded, sizeof(succeeded));
+    close(notif_fd);
     return NULL;
-  }
-  // Escreve para o FIFO de respostas que a conexão foi feita com sucesso
-  write(resp_fd, &succeeded, sizeof(succeeded));
-  printf("Client connection successful\n"); //DEBUG
-  // loop para estar sempre a ler e a responder a requests de clients
-
-  memset(req_buffer, '\0', sizeof(req_buffer));
-  while (req_buffer[0] != 2)
-  { // sai daqui quando o cliente quer dar disconnect
-    ssize_t bytes_read = read(req_fd, req_buffer, sizeof(req_buffer));
-    if (bytes_read <= 0)
-    {
-      // se lermos um 0, breaks the loop
-      break;
-    }
-    succeeded[OPCODE] = req_buffer[0];
-    printf("Client request: %d\n", succeeded[OPCODE]); //DEBUG
-    // faz algo consoante o OP_CODE recebido na request_message (req_buffer[0])
-    switch (req_buffer[0])
-    {
-    case 3:
-    { // OP_CODE do subscribe
-      // Obter a key que o cliente quer subscrever
-      char s_key[MAX_STRING_SIZE];
-      memcpy(s_key, req_buffer + 1, (size_t)(bytes_read - 1));
-      s_key[bytes_read - 1] = '\0';
-      printf("Client wants to subscribe to key: %s\n", s_key); //DEBUG
-      // Subscrevemos a key pretendida
-      succeeded[RESULT] = subscribe_key(s_key, notif_fd);
-      write(resp_fd, &succeeded, sizeof(succeeded)); // responder ao cliente
-      break;
-    }
-    case 4:
-    { // OP_CODE do unsubscribe
-      // Obter a key que o cliente quer dessubscrever
-      char u_key[MAX_STRING_SIZE];
-      memcpy(u_key, req_buffer + 1, (size_t)bytes_read - 1);
-      u_key[bytes_read - 1] = '\0';
-      printf("Client wants to unsubscribe from key: %s\n", u_key); //DEBUG
-      // Subscrevemos a key pretendida
-      succeeded[RESULT] = unsubscribe_key(u_key, notif_fd);
-      write(resp_fd, &succeeded, sizeof(succeeded)); // Respond to the client
-      break;
-    }
-    }
-  }
-  char message[2];
-  message[OPCODE] = 2;
-  message[RESULT] = 0;
-  write(resp_fd, &message, sizeof(message)); // manda ao cliente o result
-  unsubscribe_client(notif_fd);
-  printf("Client disconnected\n"); //DEBUG
-
-  // fechar os file descriptors
-  close(req_fd);
-  close(resp_fd);
-  close(notif_fd);
-  // unlock
-  //pthread_mutex_unlock(&session_mutex);
-  return NULL;
 }
 
 static void dispatch_threads(DIR *dir)
@@ -510,7 +505,7 @@ static void dispatch_threads(DIR *dir)
       //O SERVER NÃO TERMINA
       //printf("Handled SIGUSR1: All subscriptions removed and FIFOs closed.\n"); //para debug
     } else {
-      printf("Recebi um sinal inesperado: %d\n", sig); //debug
+      printf("Recebi um sinal inesperado: %d\n", signal); //debug
     }
   }
 
