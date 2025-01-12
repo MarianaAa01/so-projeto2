@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <signal.h>
+#include <semaphore.h>
 
 #include "constants.h"
 #include "io.h"
@@ -40,7 +41,7 @@ pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t n_current_backups_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t buffer_mutex = PTHREAD_MUTEX_INITIALIZER; // protege o buffer produtor-consumidor
 pthread_cond_t buffer_cond = PTHREAD_COND_INITIALIZER; // protege o buffer produtor-consumidor
-
+sem_t max_sessions; // controla o numero maximo de sessoes em simultaneo
 
 size_t active_backups = 0; // Number of active backups
 size_t max_backups;        // Maximum allowed simultaneous backups
@@ -305,7 +306,9 @@ static void *get_file(void *arguments)
 static void *host_thread(void *fd) {
     int server_fd;
     server_fd = *(int *)fd;
+    sem_init(&max_sessions, 0, S);
     while (1) {
+        sem_wait(&max_sessions);
         // Bloqueamos o mutex que protege o buffer produtor-consumidor
         pthread_mutex_lock(&buffer_mutex);
         while (buffer[0] != '\0') {
@@ -338,6 +341,8 @@ static void *client_thread(void *arg_struct) {
     perror("Error setting signal mask");
     return NULL;
   }
+
+  while (1){
 
     c_info client_information;
     client_information = *(c_info *)arg_struct;
@@ -443,6 +448,9 @@ static void *client_thread(void *arg_struct) {
     close(req_fd);
     close(resp_fd);
     close(notif_fd);
+    sem_post(&max_sessions);
+
+  }
     return NULL;
 }
 

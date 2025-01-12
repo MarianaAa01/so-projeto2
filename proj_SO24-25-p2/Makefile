@@ -50,6 +50,15 @@ client1:
 client2:
 	./src/client/client 200 /tmp/apagar
 
+client3:
+	./src/client/client 300 /tmp/apagar
+
+client4:
+	./src/client/client 400 /tmp/apagar
+
+client5:
+	./src/client/client 500 /tmp/apagar
+
 lldb_server:
 	lldb ./src/server/kvs src/server/jobs 10 10 /tmp/apagar
 
