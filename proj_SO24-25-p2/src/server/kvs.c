@@ -227,3 +227,33 @@ char unsubscribe_table_key(HashTable *ht, const char *key, int notif_fd){
   }
   return 1;
 }
+
+char global_unsubscribe(HashTable *ht, int notif_fd) {
+  pthread_rwlock_wrlock(&ht->tablelock); // lock the table for writing
+
+  for (int i = 0; i < TABLE_SIZE; i++) {
+    KeyNode *keyNode = ht->table[i];
+    while (keyNode != NULL) {
+      // verificar se o notif_fd está presente nos fds da key
+      for (size_t j = 0; j < keyNode->amount_of_subscriptions; j++) {
+        if (keyNode->notif_fds[j] == notif_fd) {
+          // remover o notif_fd do array de fds da key
+          for (size_t k = j; k < keyNode->amount_of_subscriptions - 1; k++) {
+            keyNode->notif_fds[k] = keyNode->notif_fds[k + 1];
+          }
+          keyNode->amount_of_subscriptions--;
+          keyNode->notif_fds = realloc(keyNode->notif_fds, sizeof(int) * keyNode->amount_of_subscriptions);
+          if (keyNode->notif_fds == NULL) {
+            pthread_rwlock_unlock(&ht->tablelock);
+            return 1; // único erro I think
+          }
+          break;
+        }
+      }
+      keyNode = keyNode->next;
+    }
+  }
+
+  pthread_rwlock_unlock(&ht->tablelock); // unlock the table
+  return 0;
+}

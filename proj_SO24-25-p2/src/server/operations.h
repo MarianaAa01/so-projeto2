@@ -73,5 +73,9 @@ char subscribe_key(char *key, int notif_fd);
 /// @return 0 if the subscription existed and got removed, 1 if it didn't exist.
 char unsubscribe_key(char *key, int notif_fd);
 
+/// Unsubscribes a client from all keys.
+/// @param notif_fd Notifications fd of the unsubscribing client
+/// @return 0 if the unsubscription is successful, 1 if it isn't.
+char unsubscribe_client(int notif_fd);
 
 #endif // KVS_OPERATIONS_H

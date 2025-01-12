@@ -61,5 +61,10 @@ char subscribe_table_key(HashTable *ht, const char *key, int notif_fd);
 /// @return 0 if the subscription existed and got removed, 1 if it didn't exist.
 char unsubscribe_table_key(HashTable *ht, const char *key, int notif_fd);
 
+/// Unsubscribes clients from all key.
+/// @param ht Hash table to read from.
+/// @param notif_fd Notifications fd of the client that wants to unsubscribe the keys.
+/// @return 0 if the unsubscription is successful, 1 if it isn't.
+char global_unsubscribe(HashTable *ht, int notif_fd);
 
 #endif // KVS_H

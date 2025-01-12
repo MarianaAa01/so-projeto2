@@ -25,7 +25,9 @@
         "type_traits": "c",
         "vector": "c",
         "chrono": "c",
-        "cstddef": "c"
+        "cstddef": "c",
+        "string.h": "c",
+        "kvs.h": "c"
     },
     "zencoder.enableRepoIndexing": true
 }
