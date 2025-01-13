@@ -31,4 +31,7 @@ int kvs_subscribe(const char *key);
 
 int kvs_unsubscribe(const char *key);
 
+/// Closes all the pipes of this client
+void kvs_close_all_pipes();
+
 #endif // CLIENT_API_H

@@ -293,3 +293,13 @@ int kvs_unsubscribe(const char *key)
 
   return 0;
 }
+
+void kvs_close_all_pipes(){
+  close(notif_fd);
+  close(req_fd);
+  close(resp_fd);
+  close(server_fd);
+  unlink(notif_fd);
+  unlink(req_fd);
+  unlink(resp_fd);
+}

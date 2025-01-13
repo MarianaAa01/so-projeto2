@@ -40,4 +40,6 @@ size_t parse_list(int fd, char keys[][MAX_STRING_SIZE], size_t max_keys,
 // error.
 int parse_delay(int fd, unsigned int *delay);
 
+void cleanup(int fd);
+
 #endif // KVS_PARSER_H

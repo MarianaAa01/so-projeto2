@@ -12,7 +12,18 @@
 #include "src/common/constants.h"
 #include "src/common/io.h"
 
+int program_finished;
+
 void write_str(int fd, const char *str) { write(fd, str, strlen(str)); }
+
+void signal_finishing(){
+  if (program_finished)
+  {
+    kvs_close_all_pipes();
+    cleanup(STDIN_FILENO);
+    exit (0);
+  } 
+}
 
 void *get_notifications(void *fd)
 {
@@ -46,6 +57,8 @@ void *get_notifications(void *fd)
     }
     else if (bytes_read == 0)
     {
+      write_str(STDOUT_FILENO, "FIFOS closed on the other end. On the next input, program will be over.\n");
+      program_finished = 1;
       // End of file, break the loop
       break;
     }
@@ -69,6 +82,7 @@ int main(int argc, char *argv[])
             argv[0]);
     return 1;
   }
+  program_finished = 0;
 
   char req_pipe_path[256] = "/tmp/req";     // FIFO de pedido
   char resp_pipe_path[256] = "/tmp/resp";   // FIFO de resposta
@@ -100,15 +114,17 @@ int main(int argc, char *argv[])
     switch (get_next(STDIN_FILENO))
     {
     case CMD_DISCONNECT:
-      if (kvs_disconnect(req_pipe_path, resp_pipe_path, notif_pipe_path) !=
-          0)
+      signal_finishing();
+      if (kvs_disconnect(req_pipe_path, resp_pipe_path, notif_pipe_path) != 0)
       {
         fprintf(stderr, "Failed to disconnect to the server\n");
         return 1;
       }
-      return 0;
+      program_finished = 1;
+      break;
 
     case CMD_SUBSCRIBE:
+      signal_finishing();
       num = parse_list(STDIN_FILENO, keys, 1, MAX_STRING_SIZE);
       if (num == 0)
       {
@@ -120,14 +136,11 @@ int main(int argc, char *argv[])
       {
         fprintf(stderr, "Command subscribe failed\n");
       }
-      else
-      {
-        // TODO: start notifications thread
-      }
 
       break;
 
     case CMD_UNSUBSCRIBE:
+      signal_finishing();
       num = parse_list(STDIN_FILENO, keys, 1, MAX_STRING_SIZE);
       if (num == 0)
       {
@@ -143,6 +156,7 @@ int main(int argc, char *argv[])
       break;
 
     case CMD_DELAY:
+      signal_finishing();
       if (parse_delay(STDIN_FILENO, &delay_ms) == -1)
       {
         fprintf(stderr, "Invalid command. See HELP for usage\n");
@@ -157,24 +171,27 @@ int main(int argc, char *argv[])
       break;
 
     case CMD_INVALID:
+      signal_finishing();
       fprintf(stderr, "Invalid command. See HELP for usage\n");
       break;
 
     case CMD_EMPTY:
+      signal_finishing();
       break;
 
     case EOC:
+    signal_finishing();
       // input should end in a disconnect, or it will loop here forever
       // Finalização após processar a resposta
-      if (kvs_disconnect(req_pipe_path, resp_pipe_path, notif_pipe_path) !=
-          0)
+      if (kvs_disconnect(req_pipe_path, resp_pipe_path, notif_pipe_path) != 0)
       {
         fprintf(stderr, "Failed to disconnect to the server\n");
         return 1;
       }
-
+      program_finished = 1;
       break;
     }
   }
   pthread_join(notifications_receiver, NULL);
+  return 0;
 }

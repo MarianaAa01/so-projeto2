@@ -313,34 +313,24 @@ static void *get_file(void *arguments)
 }
 
 void handle_signal_variable() {
-    printf("handle_signal_variable() called\n");
     // eliminar todas as subscrições de todos os clientes da hashtable (o array de notif_fds)
     unsubscribe_all_clients();
     // fechar as pipes de notificações de todos os clientes no lado do server
     for (int i = 0; i < S; i++) {
-        printf("Closing, for thread %d: req_fd = %d, resp_fd = %d, notif_fd = %d\n", i, req_fds[i], resp_fds[i], notif_fds[i]);
         if (req_fds[i] > 0) {
-            printf("Closing req_fd %d\n", req_fds[i]);
             close(req_fds[i]);
             req_fds[i] = -1;
-            printf("Closed req_fd\n");
         }
         if (resp_fds[i] > 0) {
-            printf("Closing resp_fd %d\n", resp_fds[i]);
             close(resp_fds[i]);
             resp_fds[i] = -1;
-            printf("Closed resp_fd\n");
         }
         if (notif_fds[i] > 0) {
-            printf("Closing notif_fd %d\n", notif_fds[i]);
             close(notif_fds[i]);
             notif_fds[i] = -1;
-            printf("Closed notif_fd\n");
         }
-        printf("Closed. Fds of thread %d are now: req_fd = %d, resp_fd = %d, notif_fd = %d\n", i, req_fds[i], resp_fds[i], notif_fds[i]);
     }
     sigusr1_received = 0;
-    printf("handle_signal_variable() finished\n");
 }
 
 static void *host_thread(void *fd) {
@@ -357,7 +347,6 @@ static void *host_thread(void *fd) {
             if (sigusr1_received) {
                 pthread_mutex_unlock(&buffer_mutex);
                 pthread_mutex_lock(&fd_arrays_lock);
-                printf("CALLED HANDLE SIGNAL VARIABLE\n");
                 handle_signal_variable();
                 pthread_mutex_unlock(&fd_arrays_lock);
                 continue;
@@ -372,7 +361,6 @@ static void *host_thread(void *fd) {
         if (sigusr1_received) {
             pthread_mutex_unlock(&buffer_mutex);
             pthread_mutex_lock(&fd_arrays_lock);
-            printf("CALLED HANDLE SIGNAL VARIABLE A\n");
             handle_signal_variable();
             pthread_mutex_unlock(&fd_arrays_lock);
             continue;
@@ -385,7 +373,6 @@ static void *host_thread(void *fd) {
             if (sigusr1_received) {
                 pthread_mutex_unlock(&buffer_mutex);
                 pthread_mutex_lock(&fd_arrays_lock);
-                printf("CALLED HANDLE SIGNAL VARIABLE B\n");
                 handle_signal_variable();
                 pthread_mutex_unlock(&fd_arrays_lock);
                 continue;
