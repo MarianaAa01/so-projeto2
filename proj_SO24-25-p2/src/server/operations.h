@@ -78,9 +78,6 @@ char unsubscribe_key(char *key, int notif_fd);
 /// @return 0 if the unsubscription is successful, 1 if it isn't.
 char unsubscribe_client(int notif_fd);
 
-/// Closes every notification pipe from all keys.
-void close_all_notifs();
-
 /// Unsubscribes every client from every key.
 void unsubscribe_all_clients();
 

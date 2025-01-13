@@ -110,7 +110,7 @@ int kvs_connect(char const *req_pipe_path, char const *resp_pipe_path,
   }
 
   // o cliente vai obter uma notificação por isso isto está em modo de leitura
-  notif_fd = open(notif_pipe_path, O_RDONLY);
+  notif_fd = open(notif_pipe_path, O_RDONLY | O_NONBLOCK);
   if (notif_fd == -1)
   {
     // Em caso de erro, unlink dos fifos já criados e close dos já abertos

@@ -257,20 +257,6 @@ char global_unsubscribe(HashTable *ht, int notif_fd) {
   return 0;
 }
 
-void close_everyones_notfications(HashTable *ht){
-  pthread_rwlock_wrlock(&ht->tablelock); // lock the table for writing
-  for (int i = 0; i < TABLE_SIZE; i++) {
-    KeyNode *keyNode = ht->table[i];
-    while (keyNode != NULL) {
-      for (int j = 0; j < keyNode->amount_of_subscriptions; j++) {
-        close(keyNode->notif_fds[j]); // Fechar notif_fd
-      }
-      keyNode = keyNode->next;
-    }
-  }
-  pthread_rwlock_unlock(&ht->tablelock); // unlock the table
-}
-
 void unsubscribe_everyone(HashTable *ht) {
   pthread_rwlock_wrlock(&ht->tablelock); // lock the table for writing
   for (int i = 0; i < TABLE_SIZE; i++) {

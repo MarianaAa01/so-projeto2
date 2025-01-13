@@ -67,10 +67,6 @@ char unsubscribe_table_key(HashTable *ht, const char *key, int notif_fd);
 /// @return 0 if the unsubscription is successful, 1 if it isn't.
 char global_unsubscribe(HashTable *ht, int notif_fd);
 
-/// Closes everyone's notifications.
-/// @param ht Hash table to read from.
-void close_everyones_notfications(HashTable *ht);
-
 /// Unsubscribes every client from all keys.
 /// @param ht Hash table to read from.
 void unsubscribe_everyone(HashTable *ht);

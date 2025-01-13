@@ -236,10 +236,6 @@ char unsubscribe_client(int notif_fd)
   global_unsubscribe(kvs_table, notif_fd);
 }
 
-void close_all_notifs(){
-  close_everyones_notfications(kvs_table);
-}
-
 void unsubscribe_all_clients(){
   unsubscribe_everyone(kvs_table);
 }

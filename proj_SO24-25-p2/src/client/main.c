@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "parser.h"
 #include "src/client/api.h"
@@ -21,21 +22,41 @@ void *get_notifications(void *fd)
   char value[41]; // buffer to hold value
   int *notif_fd;
   notif_fd = (int *)fd;
-  while (read(*notif_fd, buffer, 82))
+
+
+
+  while (1)
   {
-    memcpy(key, buffer, 41);
-    memcpy(value, buffer + 41, 41);
-    size_t bytes_written = 0;
-    write(STDOUT_FILENO, "(", 1);
-    while (bytes_written != 41)
-      bytes_written += write(STDOUT_FILENO, key, 41);
-    bytes_written = 0;
-    write(STDOUT_FILENO, ",", 1);
-    while (bytes_written != 41)
-      bytes_written += write(STDOUT_FILENO, value, 41);
-    write(STDOUT_FILENO, ")", 1);
-    memset(buffer, '\0', sizeof(buffer));
-    //(<key>,<value>)
+    ssize_t bytes_read = read(*notif_fd, buffer, 82);
+    if (bytes_read > 0)
+    {
+      memcpy(key, buffer, 41);
+      memcpy(value, buffer + 41, 41);
+      size_t bytes_written = 0;
+      write_str(STDOUT_FILENO, "(");
+      while (bytes_written != 41)
+        bytes_written += write(STDOUT_FILENO, key, 41);
+      bytes_written = 0;
+      write_str(STDOUT_FILENO, ",");
+      while (bytes_written != 41)
+        bytes_written += write(STDOUT_FILENO, value, 41);
+      write_str(STDOUT_FILENO, ")\n");
+      memset(buffer, '\0', sizeof(buffer));
+      //(<key>,<value>)
+    }
+    else if (bytes_read == 0)
+    {
+      // End of file, break the loop
+      break;
+    }
+    else if (bytes_read < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+    {
+      // An error occurred, break the loop
+      perror("read");
+      break;
+    }
+    // Sleep for a short period to avoid busy-waiting
+    usleep(100000); // 100 milliseconds
   }
   return NULL;
 }
@@ -155,4 +176,5 @@ int main(int argc, char *argv[])
       break;
     }
   }
+  pthread_join(notifications_receiver, NULL);
 }

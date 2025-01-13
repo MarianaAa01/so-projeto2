@@ -9,7 +9,7 @@ WAIT 15000
 WRITE [(a,antonia)]
 WRITE [(a,anatoli)]
 DELETE [a]
-WAIT 5000
+WAIT 10000
 WRITE [(b,ambrose)]
 SHOW
 WRITE [(l,laura)]
