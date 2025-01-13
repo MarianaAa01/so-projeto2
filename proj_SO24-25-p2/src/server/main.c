@@ -363,12 +363,6 @@ static void *client_thread(void *arg_struct) {
         pthread_cond_wait(&buffer_cond, &buffer_mutex);
     }
 
-    // Verificar se o sinal SIGUSR1 foi recebido
-    if (sigusr1_received == 1) {
-        pthread_mutex_unlock(&buffer_mutex);
-        break;
-    }
-
     // verificar  OP_CODE é 1 (connection request)
     if (buffer[0] != 1) {
         write_str(STDERR_FILENO, "Invalid operation code in client request.\n");
@@ -387,7 +381,7 @@ static void *client_thread(void *arg_struct) {
     pthread_mutex_unlock(&buffer_mutex);
 
     // primeiro lemos o request
-    int req_fd = open(client_information.req_pipe_path, O_RDONLY | O_NONBLOCK);
+    int req_fd = open(client_information.req_pipe_path, O_RDONLY);
     if (req_fd == -1) {
         write_str(STDERR_FILENO, "Open failed\n");
         return NULL;
@@ -416,20 +410,11 @@ static void *client_thread(void *arg_struct) {
 
     // loop para estar sempre a ler e a responder a requests de clients
     memset(req_buffer, '\0', sizeof(req_buffer));
-    errno = 0;
-    while (req_buffer[0] != 2 && sigusr1_received != 1) { // sai daqui quando o cliente quer dar disconnect
+    while (req_buffer[0] != 2 || sigusr1_received != 1) { // sai daqui quando o cliente quer dar disconnect
         ssize_t bytes_read = read(req_fd, req_buffer, sizeof(req_buffer));
-        if (sigusr1_received == 1) {
-          break;
-        }
         if (bytes_read <= 0) {
             // se lermos um 0, breaks the loop
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-              // Nenhum request recebido, mas o pipe ainda está em boas condições.
-              continue;
-            } else {
-              break;
-            }
+            break;
         }
         succeeded[OPCODE] = req_buffer[0];
         // faz algo consoante o OP_CODE recebido na request_message (req_buffer[0])
@@ -448,14 +433,13 @@ static void *client_thread(void *arg_struct) {
             // Obter a key que o cliente quer dessubscrever
             char u_key[MAX_STRING_SIZE];
             memcpy(u_key, req_buffer + 1, (size_t)bytes_read - 1);
-            u_key[bytes_read - 1] = '\0';
+            u_key[bytes_read - 1] = '\lo';
             // Subscrevemos a key pretendida
             succeeded[RESULT] = unsubscribe_key(u_key, notif_fd);
             write(resp_fd, &succeeded, sizeof(succeeded)); // Respond to the client
             break;
         }
       }
-      errno = 0;
     }
 
     char message[2];
@@ -469,6 +453,7 @@ static void *client_thread(void *arg_struct) {
     close(resp_fd);
     close(notif_fd);
     sem_post(&max_sessions);
+
   }
     return NULL;
 }
@@ -529,9 +514,9 @@ void sig_handler(int signal) {
     sigusr1_received = 1; 
     printf("Recebi o sinal SIGUSR1\n"); //debug
     //fechar as pipes de notificações de todos os clientes no lado do server
-    //close_all_notifs(); Isto já acontece na client_thread
+    close_all_notifs();
     //eliminar todas as subscrições de todos os clientes da hashtable (o array de notif_fds)
-    //unsubscribe_all_clients(); Isto já acontece na client thread
+    unsubscribe_all_clients();
     //printf("Handled SIGUSR1: All subscriptions removed and FIFOs closed.\n"); //para debug
   } else {
     printf("Recebi um sinal inesperado: %d\n", signal); //debug
@@ -545,7 +530,7 @@ int main(int argc, char **argv)
   struct sigaction sa;
   sa.sa_handler = sig_handler;
   sa.sa_flags = 0;
-  sigemptyset(&sa.sa_mask);
+  siemptyset(&sa.sa_mask);
   sigaction(SIGUSR1, &sa, NULL);
   //signal(SIGUSR1, sig_handler); I guess que usar sigaction é melhor
   
