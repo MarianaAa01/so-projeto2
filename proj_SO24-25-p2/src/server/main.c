@@ -48,6 +48,7 @@ size_t max_backups;        // Maximum allowed simultaneous backups
 size_t max_threads;        // Maximum allowed simultaneous threads
 char *jobs_directory = NULL;
 
+
 char buffer[121]; // buffer produtor-consumidor
 
 int filter_job_files(
@@ -503,27 +504,38 @@ static void dispatch_threads(DIR *dir)
 }
 
 
-  //SIGNAL_HANDLER
-  void sig_handler(int signal) {
-    if (signal == SIGUSR1) {
-      printf("Recebi o sinal SIGUSR1\n");
-      //eliminar todas as subscrições de todos os clientes da hashtable (o array de notif_fds)
-      //encerrar todos os FIFOs de notificações e de resposta dos clientes(para cada client faço close(notif_fd) e close(resp_fd))
+// flag global para indicar que o SIGUSR1 foi recebido
+volatile sig_atomic_t sigusr1_received = 0;
 
-      //O SERVER NÃO TERMINA
-      //printf("Handled SIGUSR1: All subscriptions removed and FIFOs closed.\n"); //para debug
-    } else {
-      printf("Recebi um sinal inesperado: %d\n", signal); //debug
-    }
+//O SERVER NÃO TERMINA
+void sig_handler(int signal) {
+  if (signal == SIGUSR1) {
+    // mudar a flag para 1
+    sigusr1_received = 1; 
+    printf("Recebi o sinal SIGUSR1\n"); //debug
+    //fechar as pipes de notificações de todos os clientes no lado do server
+    close_all_notifs();
+    //eliminar todas as subscrições de todos os clientes da hashtable (o array de notif_fds)
+    unsubscribe_all_clients();
+    //fechar todas as pipes de resposta dos clientes
+    //close_all_resp_fds();
+    //printf("Handled SIGUSR1: All subscriptions removed and FIFOs closed.\n"); //para debug
+  } else {
+    printf("Recebi um sinal inesperado: %d\n", signal); //debug
   }
+}
 
 
 int main(int argc, char **argv)
 {
   //receber aqui o signal e mandar pro sig_handler
-  //(acho que usar o sigaction é melhor mas tava a dar bue erro e como só damos handle a um signal n faz tanta diferença)
-  signal(SIGUSR1, sig_handler);
-
+  struct sigaction sa;
+  sa.sa_handler = sig_handler;
+  sa.sa_flags = 0;
+  siemptyset(&sa.sa_mask);
+  sigaction(SIGUSR1, &sa, NULL);
+  //signal(SIGUSR1, sig_handler); I guess que usar sigaction é melhor
+  
   // se os argumentos todos n forem apresentados o programa termina
   if (argc < 5)
   {

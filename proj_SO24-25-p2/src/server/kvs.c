@@ -256,3 +256,30 @@ char global_unsubscribe(HashTable *ht, int notif_fd) {
   pthread_rwlock_unlock(&ht->tablelock); // unlock the table
   return 0;
 }
+
+void close_everyones_notfications(HashTable *ht){
+  pthread_rwlock_wrlock(&ht->tablelock); // lock the table for writing
+  for (int i = 0; i < TABLE_SIZE; i++) {
+    KeyNode *keyNode = ht->table[i];
+    while (keyNode != NULL) {
+      for (int j = 0; j < keyNode->amount_of_subscriptions; j++) {
+        close(keyNode->notif_fds[j]); // Fechar notif_fd
+      }
+      keyNode = keyNode->next;
+    }
+  }
+  pthread_rwlock_unlock(&ht->tablelock); // unlock the table
+}
+
+void unsubscribe_everyone(HashTable *ht) {
+  pthread_rwlock_wrlock(&ht->tablelock); // lock the table for writing
+  for (int i = 0; i < TABLE_SIZE; i++) {
+    KeyNode *keyNode = ht->table[i];
+    if (keyNode != NULL) {
+      // esvazia o array (mantendo-o alocado) e colocar amount_of_subscriptions a zero
+      memset(keyNode->notif_fds, 0, sizeof(int) * keyNode->amount_of_subscriptions);
+      keyNode->amount_of_subscriptions = 0;
+    }
+  }
+  pthread_rwlock_unlock(&ht->tablelock); // unlock the table
+}
