@@ -48,6 +48,8 @@ size_t max_backups;        // Maximum allowed simultaneous backups
 size_t max_threads;        // Maximum allowed simultaneous threads
 char *jobs_directory = NULL;
 
+// flag global para indicar que o SIGUSR1 foi recebido
+volatile sig_atomic_t sigusr1_received = 0;
 
 char buffer[121]; // buffer produtor-consumidor
 
@@ -408,7 +410,7 @@ static void *client_thread(void *arg_struct) {
 
     // loop para estar sempre a ler e a responder a requests de clients
     memset(req_buffer, '\0', sizeof(req_buffer));
-    while (req_buffer[0] != 2) { // sai daqui quando o cliente quer dar disconnect
+    while (req_buffer[0] != 2 || sigusr1_received != 1) { // sai daqui quando o cliente quer dar disconnect
         ssize_t bytes_read = read(req_fd, req_buffer, sizeof(req_buffer));
         if (bytes_read <= 0) {
             // se lermos um 0, breaks the loop
@@ -437,8 +439,9 @@ static void *client_thread(void *arg_struct) {
             write(resp_fd, &succeeded, sizeof(succeeded)); // Respond to the client
             break;
         }
-        }
+      }
     }
+
     char message[2];
     message[OPCODE] = 2;
     message[RESULT] = 0;
@@ -504,9 +507,6 @@ static void dispatch_threads(DIR *dir)
 }
 
 
-// flag global para indicar que o SIGUSR1 foi recebido
-volatile sig_atomic_t sigusr1_received = 0;
-
 //O SERVER NÃO TERMINA
 void sig_handler(int signal) {
   if (signal == SIGUSR1) {
@@ -517,8 +517,6 @@ void sig_handler(int signal) {
     close_all_notifs();
     //eliminar todas as subscrições de todos os clientes da hashtable (o array de notif_fds)
     unsubscribe_all_clients();
-    //fechar todas as pipes de resposta dos clientes
-    //close_all_resp_fds();
     //printf("Handled SIGUSR1: All subscriptions removed and FIFOs closed.\n"); //para debug
   } else {
     printf("Recebi um sinal inesperado: %d\n", signal); //debug
