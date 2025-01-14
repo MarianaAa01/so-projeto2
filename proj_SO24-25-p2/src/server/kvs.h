@@ -50,20 +50,23 @@ void free_table(HashTable *ht);
 /// Subscribes a key from the table.
 /// @param ht Hash table to read from.
 /// @param key Key of the pair to be subscribed.
-/// @param notif_fd Notifications fd of the client that wants to subscribe the key.
+/// @param notif_fd Notifications fd of the client that wants to subscribe the
+/// key.
 /// @return 0 if the node of that key does not exist, 1 if it exists.
 char subscribe_table_key(HashTable *ht, const char *key, int notif_fd);
 
 /// Subscribes a key from the table.
 /// @param ht Hash table to read from.
 /// @param key Key of the pair to be subscribed.
-/// @param notif_fd Notifications fd of the client that wants to unsubscribe the key.
+/// @param notif_fd Notifications fd of the client that wants to unsubscribe the
+/// key.
 /// @return 0 if the subscription existed and got removed, 1 if it didn't exist.
 char unsubscribe_table_key(HashTable *ht, const char *key, int notif_fd);
 
 /// Unsubscribes clients from all key.
 /// @param ht Hash table to read from.
-/// @param notif_fd Notifications fd of the client that wants to unsubscribe the keys.
+/// @param notif_fd Notifications fd of the client that wants to unsubscribe the
+/// keys.
 /// @return 0 if the unsubscription is successful, 1 if it isn't.
 char global_unsubscribe(HashTable *ht, int notif_fd);
 

@@ -4,6 +4,5 @@
 
 #define S 2
 
-
 #define OPCODE 0
 #define RESULT 1

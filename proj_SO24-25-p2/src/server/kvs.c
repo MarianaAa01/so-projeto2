@@ -3,8 +3,8 @@
 #include <ctype.h>
 #include <unistd.h>
 
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // Hash function based on key initial.
 // @param key Lowercase alphabetical string.
@@ -12,6 +12,7 @@
 // NOTE: This is not an ideal hash function, but is useful for test purposes of
 // the project
 int hash(const char *key) {
+
   int firstLetter = tolower(key[0]);
   if (firstLetter >= 'a' && firstLetter <= 'z') {
     return firstLetter - 'a';
@@ -46,13 +47,13 @@ int write_pair(HashTable *ht, const char *key, const char *value) {
       keyNode->value = strdup(value);
 
       // Update clients
-      for(int i = 0; i < keyNode->amount_of_subscriptions; i++){
+      for (int i = 0; i < keyNode->amount_of_subscriptions; i++) {
         char buffer[82];
         memset(buffer, '\0', sizeof(buffer));
         memcpy(buffer, keyNode->key, strlen(key));
         memcpy(buffer + 41, keyNode->value, strlen(value));
         size_t bytes_written = 0;
-        while (bytes_written != 82){
+        while (bytes_written != 82) {
           bytes_written += write(keyNode->notif_fds[i], buffer, 82);
         }
       }
@@ -64,8 +65,8 @@ int write_pair(HashTable *ht, const char *key, const char *value) {
   }
   // Key not found, create a new key node
   keyNode = malloc(sizeof(KeyNode));
-  keyNode->key = strdup(key);       // Allocate memory for the key
-  keyNode->value = strdup(value);   // Allocate memory for the value
+  keyNode->key = strdup(key);     // Allocate memory for the key
+  keyNode->value = strdup(value); // Allocate memory for the value
   keyNode->amount_of_subscriptions = 0;
   keyNode->notif_fds = NULL;
   keyNode->next = ht->table[index]; // Link to existing nodes
@@ -113,17 +114,16 @@ int delete_pair(HashTable *ht, const char *key) {
       }
 
       // Update clients
-      for(int i = 0; i < keyNode->amount_of_subscriptions; i++){
+      for (int i = 0; i < keyNode->amount_of_subscriptions; i++) {
         char buffer[82];
         memset(buffer, '\0', sizeof(buffer));
         memcpy(buffer, keyNode->key, strlen(key));
         memcpy(buffer + 41, "DELETE", strlen("DELETE"));
         size_t bytes_written = 0;
-        while (bytes_written != 82){
+        while (bytes_written != 82) {
           bytes_written += write(keyNode->notif_fds[i], buffer, 82);
         }
       }
-
 
       // Free the memory allocated for the key and value
       free(keyNode->key);
@@ -166,12 +166,16 @@ char subscribe_table_key(HashTable *ht, const char *key, int notif_fd) {
       // Encontrou a key na tabela. Vamos procurar se o fd já lá está
       for (int i = 0; i < keyNode->amount_of_subscriptions; i++) {
         if (notif_fd == keyNode->notif_fds[i]) {
-          // Esta key já estava a ser subscrita por este cliente. Não fazemos nada, mas operação teve sucesso.
+          // Esta key já estava a ser subscrita por este cliente. Não fazemos
+          // nada, mas operação teve sucesso.
           return 1;
         }
       }
-      // A key existe mas não estava a ser seguida por este cliente. Acrescentamos este notif_fd a esta key.
-      int *new_fds = realloc(keyNode->notif_fds, sizeof(int) * (keyNode->amount_of_subscriptions + 1));
+      // A key existe mas não estava a ser seguida por este cliente.
+      // Acrescentamos este notif_fd a esta key.
+      int *new_fds =
+          realloc(keyNode->notif_fds,
+                  sizeof(int) * (keyNode->amount_of_subscriptions + 1));
       if (!new_fds) {
         perror("Realloc failed");
         return 0;
@@ -187,7 +191,7 @@ char subscribe_table_key(HashTable *ht, const char *key, int notif_fd) {
   return 0;
 }
 
-int* remove_one_from_int_array(int *array, int size, int to_remove) {
+int *remove_one_from_int_array(int *array, int size, int to_remove) {
   int *tmp_array = malloc(sizeof(int) * (size - 1));
   if (!tmp_array) {
     perror("Malloc failed");
@@ -215,8 +219,10 @@ char unsubscribe_table_key(HashTable *ht, const char *key, int notif_fd) {
       // Encontrou a key na tabela. Vamos procurar se o fd já lá está
       for (int i = 0; i < keyNode->amount_of_subscriptions; i++) {
         if (notif_fd == keyNode->notif_fds[i]) {
-          // Esta key estava a ser subscrita por este cliente. Removemos a subscrição.
-          keyNode->notif_fds = remove_one_from_int_array(keyNode->notif_fds, keyNode->amount_of_subscriptions, notif_fd);
+          // Esta key estava a ser subscrita por este cliente. Removemos a
+          // subscrição.
+          keyNode->notif_fds = remove_one_from_int_array(
+              keyNode->notif_fds, keyNode->amount_of_subscriptions, notif_fd);
           keyNode->amount_of_subscriptions--;
           return 0;
         }
@@ -241,7 +247,9 @@ char global_unsubscribe(HashTable *ht, int notif_fd) {
             keyNode->notif_fds[k] = keyNode->notif_fds[k + 1];
           }
           keyNode->amount_of_subscriptions--;
-          keyNode->notif_fds = realloc(keyNode->notif_fds, sizeof(int) * keyNode->amount_of_subscriptions);
+          keyNode->notif_fds =
+              realloc(keyNode->notif_fds,
+                      sizeof(int) * keyNode->amount_of_subscriptions);
           if (keyNode->notif_fds == NULL) {
             pthread_rwlock_unlock(&ht->tablelock);
             return 1; // único erro I think
@@ -262,8 +270,10 @@ void unsubscribe_everyone(HashTable *ht) {
   for (int i = 0; i < TABLE_SIZE; i++) {
     KeyNode *keyNode = ht->table[i];
     if (keyNode != NULL) {
-      // esvazia o array (mantendo-o alocado) e colocar amount_of_subscriptions a zero
-      memset(keyNode->notif_fds, 0, sizeof(int) * keyNode->amount_of_subscriptions);
+      // esvazia o array (mantendo-o alocado) e colocar amount_of_subscriptions
+      // a zero
+      memset(keyNode->notif_fds, 0,
+             sizeof(int) * keyNode->amount_of_subscriptions);
       keyNode->amount_of_subscriptions = 0;
     }
   }
